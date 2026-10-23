@@ -1,7 +1,6 @@
-
 import 'package:flutter/material.dart';
 
-// Generic Class dùng chung cho các màn hình
+// Generic Class dùng chung cho các màn hình theo chuẩn OOP, tự động thích ứng Light / Dark Mode
 class GenericScreen<T> extends StatelessWidget {
   // Thuộc tính chung
   final String title;
@@ -20,24 +19,41 @@ class GenericScreen<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final Color appBarBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final Color textPrimary = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+
     return Scaffold(
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text(title),
-        backgroundColor: const Color(0xFF2563EB),
-        foregroundColor: Colors.white,
-        centerTitle: true,
+        title: Text(
+          title,
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        backgroundColor: appBarBg,
+        foregroundColor: textPrimary,
+        elevation: 0,
+        centerTitle: false,
       ),
 
       // Bố cục chung
       body: items.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 'Chưa có dữ liệu',
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               itemCount: items.length,
               itemBuilder: (context, index) {
                 return itemBuilder(
