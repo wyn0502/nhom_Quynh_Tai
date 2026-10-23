@@ -47,28 +47,27 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCCuHseNyRHbQXyhYTBrFbjFPRw3TyzJ5M',
-    appId: '1:589513508342:web:2f1d915824613b054033d7',
-    messagingSenderId: '589513508342',
-    projectId: 'dormitorymanagement-5be52',
-    authDomain: 'dormitorymanagement-5be52.firebaseapp.com',
-    storageBucket: 'dormitorymanagement-5be52.firebasestorage.app',
-    measurementId: 'G-1YPDW7R40K',
+    apiKey: 'AIzaSyClLSEuFMlLVDHt3Gm7E7LDeY7eMTf4YIM',
+    appId: '1:948953996399:web:c691115e4a0c41001b019a',
+    messagingSenderId: '948953996399',
+    projectId: 'ltmobile-89b11',
+    authDomain: 'ltmobile-89b11.firebaseapp.com',
+    storageBucket: 'ltmobile-89b11.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyA-Feo_T6Ve0WCuZ7bb30xK_sOeWLgOHDw',
-    appId: '1:589513508342:android:0e5a8d2b770026c44033d7',
-    messagingSenderId: '589513508342',
-    projectId: 'dormitorymanagement-5be52',
-    storageBucket: 'dormitorymanagement-5be52.firebasestorage.app',
+    apiKey: 'AIzaSyBiEp-lCbF6jwR4dR5P4mgRP-iD8inA9qM',
+    appId: '1:948953996399:android:04114b8af03942891b019a',
+    messagingSenderId: '948953996399',
+    projectId: 'ltmobile-89b11',
+    storageBucket: 'ltmobile-89b11.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDjeq5ckup259XIjBAXUTZQQXmA_Elqv28',
-    appId: '1:589513508342:ios:7d3058361d2a35144033d7',
-    messagingSenderId: '589513508342',
-    projectId: 'dormitorymanagement-5be52',
-    storageBucket: 'dormitorymanagement-5be52.firebasestorage.app',
+    apiKey: 'AIzaSyD0fYTi7jScS0oSZFHZkmZ3VXgKaW1E04c',
+    appId: '1:948953996399:ios:dbc6f753449350831b019a',
+    messagingSenderId: '948953996399',
+    projectId: 'ltmobile-89b11',
+    storageBucket: 'ltmobile-89b11.firebasestorage.app',
     iosBundleId: 'com.example.taiQuynhDormitoryManagement',
   );
 }
