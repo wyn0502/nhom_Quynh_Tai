@@ -1,9 +1,3 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility that Flutter provides. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,20 +5,58 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tai_quynh_dormitory_management/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(MyApp());
+  testWidgets(
+    'Kiem tra giao dien quan ly ky tuc xa',
+    (WidgetTester tester) async {
+      // Khởi tạo giao diện ứng dụng
+      await tester.pumpWidget(
+        const DormitoryApp(),
+      );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      // Kiểm tra màn hình Trang chủ
+      expect(
+        find.text('Trang chủ KTX'),
+        findsOneWidget,
+      );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      // Kiểm tra các tab điều hướng
+      expect(
+        find.text('Trang chủ'),
+        findsWidgets,
+      );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-  });
+      expect(
+        find.text('Phòng KTX'),
+        findsWidgets,
+      );
+
+      expect(
+        find.text('Sinh viên'),
+        findsWidgets,
+      );
+
+      expect(
+        find.text('Hóa đơn'),
+        findsWidgets,
+      );
+
+      // Kiểm tra chuyển sang màn hình Phòng KTX
+      await tester.tap(
+        find.byIcon(Icons.meeting_room_outlined),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Quản lý Phòng KTX'),
+        findsOneWidget,
+      );
+
+      // Kiểm tra phòng 101 được hiển thị
+      expect(
+        find.text('Phòng 101 - Tòa A'),
+        findsOneWidget,
+      );
+    },
+  );
 }

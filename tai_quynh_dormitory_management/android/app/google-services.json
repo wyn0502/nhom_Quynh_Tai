@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "589513508342",
+    "project_id": "dormitorymanagement-5be52",
+    "storage_bucket": "dormitorymanagement-5be52.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:589513508342:android:0e5a8d2b770026c44033d7",
+        "android_client_info": {
+          "package_name": "com.example.tai_quynh_dormitory_management"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA-Feo_T6Ve0WCuZ7bb30xK_sOeWLgOHDw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,9 +1,10 @@
 
 import 'package:flutter/material.dart';
+
 import '../models/room.dart';
 import 'generic_screen.dart';
 
-// Kế thừa GenericScreen<Room>
+// RoomScreen kế thừa Generic Layout
 class RoomScreen extends GenericScreen<Room> {
   RoomScreen({Key? key})
       : super(
@@ -45,10 +46,9 @@ class RoomScreen extends GenericScreen<Room> {
   ) {
     return StatefulBuilder(
       builder: (context, setState) {
-
-        // Thêm sinh viên
+        // Thêm sinh viên vào phòng
         void addStudent() {
-          bool success = room.addOccupant();
+          final bool success = room.addOccupant();
 
           if (success) {
             setState(() {});
@@ -63,9 +63,9 @@ class RoomScreen extends GenericScreen<Room> {
           }
         }
 
-        // Bớt sinh viên
+        // Bớt sinh viên khỏi phòng
         void removeStudent() {
-          bool success = room.removeOccupant();
+          final bool success = room.removeOccupant();
 
           if (success) {
             setState(() {});
@@ -84,20 +84,19 @@ class RoomScreen extends GenericScreen<Room> {
           elevation: 4,
           margin: const EdgeInsets.only(bottom: 16),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                // Tên phòng
+                // Thông tin tên phòng
                 Row(
                   children: [
                     const Icon(
                       Icons.meeting_room,
                       color: Colors.blue,
-                      size: 32,
+                      size: 36,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'Phòng ${room.name} - ${room.buildingId}',
@@ -110,32 +109,32 @@ class RoomScreen extends GenericScreen<Room> {
                   ],
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
-                Text(
-                  'Loại phòng: ${room.roomType}',
-                ),
-
+                Text('Loại phòng: ${room.roomType}'),
                 const SizedBox(height: 6),
 
                 Text(
-                  'Giá phòng: ${room.fixedPrice.toStringAsFixed(0)} VNĐ',
+                  'Giá phòng: '
+                  '${room.fixedPrice.toStringAsFixed(0)} VNĐ',
                 ),
-
                 const SizedBox(height: 6),
 
                 Text(
-                  'Sĩ số: ${room.currentOccupancy}/${room.capacity}',
+                  'Sĩ số: '
+                  '${room.currentOccupancy}/${room.capacity}',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
-                // Thanh hiển thị sĩ số
+                // Thanh thể hiện mức độ sử dụng phòng
                 LinearProgressIndicator(
-                  value: room.currentOccupancy / room.capacity,
+                  value: room.capacity > 0
+                      ? room.currentOccupancy / room.capacity
+                      : 0,
                   backgroundColor: Colors.grey[300],
                   valueColor: AlwaysStoppedAnimation<Color>(
                     room.hasAvailableBeds()
@@ -144,9 +143,9 @@ class RoomScreen extends GenericScreen<Room> {
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
-                // Hai nút thêm và bớt sinh viên
+                // Nút thêm và bớt sinh viên
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -155,7 +154,8 @@ class RoomScreen extends GenericScreen<Room> {
                       icon: const Icon(Icons.remove),
                       label: const Text('Bớt'),
                       style: ElevatedButton.styleFrom(
-                        primary: Colors.red,
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
                       ),
                     ),
 
@@ -166,7 +166,8 @@ class RoomScreen extends GenericScreen<Room> {
                       icon: const Icon(Icons.add),
                       label: const Text('Thêm'),
                       style: ElevatedButton.styleFrom(
-                        primary: Colors.green,
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
                       ),
                     ),
                   ],
