@@ -1,4 +1,5 @@
 class Room {
+  String? id;
   String buildingId;       
   String name;             
   int capacity;            
@@ -6,8 +7,8 @@ class Room {
   String roomType;         
   double fixedPrice;       
 
-  
   Room({
+    this.id,
     required this.buildingId,
     required this.name,
     required this.capacity,
@@ -16,32 +17,50 @@ class Room {
     required this.fixedPrice,
   });
 
-  
+  int get availableBeds => (capacity - currentOccupancy).clamp(0, capacity);
+
   bool hasAvailableBeds() {
     return currentOccupancy < capacity;
   }
 
-  
   bool addOccupant() {
     if (hasAvailableBeds()) {
       currentOccupancy++;
-      print('Đã xếp chỗ thành công vào phòng $name. Sĩ số: $currentOccupancy/$capacity');
       return true; 
     } else {
-      print('Lỗi: Phòng $name đã đạt tối đa sức chứa ($capacity người).');
       return false; 
     }
   }
 
-  
   bool removeOccupant() {
     if (currentOccupancy > 0) {
       currentOccupancy--;
-      print('Một sinh viên đã rời phòng $name. Sĩ số: $currentOccupancy/$capacity');
-      return true;
+      return true; 
     } else {
-      print('Lỗi: Phòng $name hiện đang trống, không thể giảm số lượng.');
-      return false;
+      return false; 
     }
+  }
+
+  factory Room.fromJson(Map<String, dynamic> json, [String? docId]) {
+    return Room(
+      id: docId ?? json['id']?.toString(),
+      buildingId: json['building_id']?.toString() ?? 'Tòa A',
+      name: json['room_name']?.toString() ?? docId ?? '',
+      capacity: (json['capacity'] as num?)?.toInt() ?? 4,
+      currentOccupancy: (json['current_occupancy'] as num?)?.toInt() ?? 0,
+      roomType: json['type']?.toString() ?? 'Thường',
+      fixedPrice: (json['fixed_rent'] as num?)?.toDouble() ?? 1500000,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'building_id': buildingId,
+      'room_name': name,
+      'capacity': capacity,
+      'current_occupancy': currentOccupancy,
+      'type': roomType,
+      'fixed_rent': fixedPrice,
+    };
   }
 }
