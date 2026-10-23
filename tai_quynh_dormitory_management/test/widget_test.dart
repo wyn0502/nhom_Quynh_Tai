@@ -2,20 +2,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:tai_quynh_dormitory_management/controllers/auth_controller.dart';
 import 'package:tai_quynh_dormitory_management/main.dart';
 
 void main() {
   testWidgets(
     'Kiem tra giao dien quan ly ky tuc xa',
     (WidgetTester tester) async {
-      // Khởi tạo giao diện ứng dụng
-      await tester.pumpWidget(
-        const DormitoryApp(),
-      );
+      // 1. Kiểm tra màn hình đăng nhập ban đầu
+      AuthController.instance.logout();
+      await tester.pumpWidget(const DormitoryApp());
+      await tester.pumpAndSettle();
 
-      // Kiểm tra màn hình Trang chủ
+      expect(find.text('ĐĂNG NHẬP'), findsWidgets);
+      expect(find.text('Tên đăng nhập'), findsOneWidget);
+
+      // 2. Đăng nhập vào hệ thống
+      AuthController.instance.quickLoginStudent();
+      await tester.pumpAndSettle();
+
+      // Kiểm tra logo thương hiệu DOMITORY
       expect(
-        find.text('Trang chủ KTX'),
+        find.text('DOMITORY'),
         findsOneWidget,
       );
 
@@ -42,11 +50,12 @@ void main() {
 
       // Kiểm tra chuyển sang màn hình Phòng KTX
       await tester.tap(
-        find.byIcon(Icons.meeting_room_outlined),
+        find.byIcon(Icons.meeting_room_outlined).last,
       );
 
       await tester.pumpAndSettle();
 
+      // Kiểm tra tiêu đề màn hình cho Sinh viên
       expect(
         find.text('Quản lý Phòng KTX'),
         findsOneWidget,
@@ -55,8 +64,9 @@ void main() {
       // Kiểm tra phòng 101 được hiển thị
       expect(
         find.text('Phòng 101 - Tòa A'),
-        findsOneWidget,
+        findsWidgets,
       );
     },
   );
 }
+
