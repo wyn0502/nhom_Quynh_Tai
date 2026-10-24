@@ -1,201 +1,277 @@
+
 import 'package:flutter/material.dart';
+
 import '../controllers/auth_controller.dart';
 import '../models/room.dart';
 import '../models/user.dart';
 import '../services/firestore_service.dart';
 
-/// Màn hình Quản lý & Đăng ký Phòng KTX
-/// - Phân quyền rõ rệt: Sinh viên (Xem & Đăng ký phòng) vs Admin (Toàn quyền CRUD: Thêm, Sửa, Xóa, Xếp chỗ)
-/// - Đồng bộ trực tiếp với Firebase Firestore & CSDL quan_ly_ktx.sql
 class RoomScreen extends StatefulWidget {
-  const RoomScreen({Key? key}) : super(key: key);
+  const RoomScreen({super.key});
 
   @override
   State<RoomScreen> createState() => _RoomScreenState();
 }
 
 class _RoomScreenState extends State<RoomScreen> {
-  String _selectedBuildingFilter = 'all'; // 'all', 'Tòa A', 'Tòa B'
+  final FirestoreService _service = FirestoreService();
+
+  String _selectedBuildingFilter = 'all';
   String _searchQuery = '';
 
-  // Dữ liệu phòng mặc định từ quan_ly_ktx.sql làm fallback
-  final List<Room> _fallbackRooms = [
-    Room(
-      id: 'room_A101',
-      buildingId: 'Tòa A',
-      name: '101',
-      capacity: 4,
-      currentOccupancy: 2,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-    Room(
-      id: 'room_A102',
-      buildingId: 'Tòa A',
-      name: '102',
-      capacity: 4,
-      currentOccupancy: 1,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-    Room(
-      id: 'room_A201',
-      buildingId: 'Tòa A',
-      name: '201',
-      capacity: 6,
-      currentOccupancy: 1,
-      roomType: 'Dịch vụ VIP',
-      fixedPrice: 2200000,
-    ),
-    Room(
-      id: 'room_B101',
-      buildingId: 'Tòa B',
-      name: 'B101',
-      capacity: 4,
-      currentOccupancy: 2,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-  ];
+  static const Color navy = Color(0xFF1E3A8A);
+  static const Color green = Color(0xFF059669);
+  static const Color orange = Color(0xFFF97316);
+  static const Color red = Color(0xFFDC2626);
+
+  void _showMessage(String message, {bool error = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: error ? red : green,
+        content: Text(message),
+      ),
+    );
+  }
+
+  // ==========================================
+  // KIỂM TRA PHÒNG CỦA SINH VIÊN
+  // ==========================================
+
+  String _normalize(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('phòng', '')
+        .replaceAll('tòa', '')
+        .replaceAll(RegExp(r'[\s\-_]'), '');
+  }
+
+  bool _isStudentRoom(Room room, User user) {
+    final roomName =
+        user.pendingRoomName?.trim() ?? '';
+
+    if (roomName.isEmpty) {
+      return false;
+    }
+
+    final registered = _normalize(roomName);
+    final name = _normalize(room.name);
+    final building = _normalize(room.buildingId);
+
+    // Ưu tiên so sánh cả tên phòng và tòa nhà.
+    if (registered == '$name$building' ||
+        registered == '$building$name') {
+      return true;
+    }
+
+    // Hỗ trợ dữ liệu cũ chỉ lưu "Phòng 101".
+    // Chỉ chấp nhận nếu tên phòng thực sự giống nhau.
+    return registered == name;
+  }
+
+  bool _hasRegisteredRoom(User user) {
+    return user.roomStatus == RoomStatus.pending ||
+        user.roomStatus == RoomStatus.approved;
+  }
+
+  List<Room> _getVisibleRooms(
+    List<Room> rooms,
+    User user,
+    bool isAdmin,
+  ) {
+    // Admin được xem tất cả phòng.
+    if (isAdmin) {
+      return _filterRooms(rooms);
+    }
+
+    // Sinh viên đã đăng ký hoặc đang cư trú:
+    // Chỉ được xem phòng liên quan.
+    if (_hasRegisteredRoom(user)) {
+      return rooms.where((room) {
+        return _isStudentRoom(room, user);
+      }).toList();
+    }
+
+    // Sinh viên chưa đăng ký hoặc đã bị từ chối.
+    return _filterRooms(rooms);
+  }
+
+  List<Room> _filterRooms(List<Room> rooms) {
+    return rooms.where((room) {
+      final matchBuilding =
+          _selectedBuildingFilter == 'all' ||
+          room.buildingId == _selectedBuildingFilter;
+
+      final keyword = _searchQuery.trim().toLowerCase();
+
+      final matchSearch = keyword.isEmpty ||
+          room.name.toLowerCase().contains(keyword) ||
+          room.buildingId.toLowerCase().contains(keyword);
+
+      return matchBuilding && matchSearch;
+    }).toList();
+  }
+
+  // ==========================================
+  // MÀN HÌNH CHÍNH
+  // ==========================================
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color brandNavy = const Color(0xFF1E3A8A);
-    final Color brandOrange = const Color(0xFFF97316);
-    final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final Color textPrimary = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF1E293B);
-    final Color textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-    final Color borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final isDark =
+        Theme.of(context).brightness == Brightness.dark;
+
+    final background =
+        isDark ? const Color(0xFF0F172A) : const Color(0xFFEEF2F8);
+
+    final cardColor =
+        isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    final primaryText =
+        isDark ? Colors.white : const Color(0xFF1E293B);
+
+    final secondaryText =
+        isDark
+            ? const Color(0xFF94A3B8)
+            : const Color(0xFF64748B);
 
     return AnimatedBuilder(
       animation: AuthController.instance,
       builder: (context, _) {
-        final bool isAdmin = AuthController.instance.isAdmin;
-        final User currentUser = AuthController.instance.currentUser;
+        final auth = AuthController.instance;
+        final isAdmin = auth.isAdmin;
+        final currentUser = auth.currentUser;
+
+        final hasRegistered =
+            !isAdmin && _hasRegisteredRoom(currentUser);
 
         return Scaffold(
-          backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFEEF2F8),
+          backgroundColor: background,
+
           appBar: AppBar(
-            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            backgroundColor: cardColor,
             elevation: 0,
             title: Text(
-              isAdmin ? 'Quản lý Phòng KTX (Admin)' : 'Quản lý Phòng KTX',
+              isAdmin
+                  ? 'Quản lý Phòng KTX (Admin)'
+                  : 'Quản lý Phòng KTX',
               style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: primaryText,
               ),
             ),
             actions: [
               if (isAdmin)
                 IconButton(
-                  tooltip: 'Thêm phòng mới',
-                  icon: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: brandNavy,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.add, color: Colors.white, size: 18),
-                  ),
-                  onPressed: () => _showAddRoomDialog(context, isDark, brandNavy, borderColor),
+                  tooltip: 'Thêm phòng',
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () => _showRoomDialog(),
                 ),
-              const SizedBox(width: 8),
             ],
           ),
+
           body: StreamBuilder<List<Room>>(
-            stream: FirestoreService().getRoomsStream(),
+            stream: _service.getRoomsStream(),
             builder: (context, snapshot) {
-              List<Room> rooms = _fallbackRooms;
-              if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                rooms = snapshot.data!;
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Không thể tải phòng: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                );
               }
 
-              // Lọc theo tòa nhà & tìm kiếm
-              final filteredRooms = rooms.where((r) {
-                final matchBuilding = _selectedBuildingFilter == 'all' || r.buildingId == _selectedBuildingFilter;
-                final matchSearch = _searchQuery.isEmpty ||
-                    r.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                    r.buildingId.toLowerCase().contains(_searchQuery.toLowerCase());
-                return matchBuilding && matchSearch;
-              }).toList();
+              if (!snapshot.hasData) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
 
-              return SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Thẻ trạng thái phòng riêng của sinh viên
-                    if (!isAdmin)
-                      _buildStudentResidencyStatusCard(
-                        currentUser,
-                        isDark,
-                        cardBg,
-                        textPrimary,
-                        textSecondary,
-                        borderColor,
-                        brandNavy,
-                        brandOrange,
-                      ),
+              final allRooms = snapshot.data!;
 
-                    // 2. Thẻ thống kê tổng quan của Admin (CRUD stats)
-                    if (isAdmin)
-                      _buildAdminRoomsSummary(
-                        rooms,
-                        isDark,
-                        cardBg,
-                        textPrimary,
-                        textSecondary,
-                        borderColor,
-                        brandNavy,
-                      ),
+              final visibleRooms = _getVisibleRooms(
+                allRooms,
+                currentUser,
+                isAdmin,
+              );
 
-                    const SizedBox(height: 14),
-
-                    // 3. Thanh tìm kiếm và bộ lọc tòa nhà
-                    _buildFilterBar(isDark, cardBg, textPrimary, textSecondary, borderColor, brandNavy),
-
-                    const SizedBox(height: 14),
-
-                    // 4. Danh sách các phòng
-                    if (filteredRooms.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(40),
-                          child: Text(
-                            'Không tìm thấy phòng phù hợp.',
-                            style: TextStyle(color: textSecondary, fontSize: 14),
-                          ),
-                        ),
-                      )
-                    else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredRooms.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final room = filteredRooms[index];
-                          return _buildRoomCard(
-                            room: room,
-                            isAdmin: isAdmin,
-                            currentUser: currentUser,
-                            isDark: isDark,
-                            cardBg: cardBg,
-                            textPrimary: textPrimary,
-                            textSecondary: textSecondary,
-                            borderColor: borderColor,
-                            brandNavy: brandNavy,
-                            brandOrange: brandOrange,
-                          );
-                        },
-                      ),
-
-                    const SizedBox(height: 24),
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Trạng thái cư trú của sinh viên.
+                  if (!isAdmin) ...[
+                    _buildResidencyCard(
+                      currentUser,
+                      cardColor,
+                      primaryText,
+                      secondaryText,
+                    ),
+                    const SizedBox(height: 20),
                   ],
-                ),
+
+                  // Admin: thống kê toàn bộ phòng.
+                  if (isAdmin) ...[
+                    _buildAdminSummary(
+                      allRooms,
+                      cardColor,
+                      primaryText,
+                      secondaryText,
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Chỉ hiển thị tìm kiếm khi được xem danh sách.
+                  if (!hasRegistered) ...[
+                    _buildSearchBar(cardColor),
+                    const SizedBox(height: 12),
+                    _buildBuildingFilters(),
+                    const SizedBox(height: 18),
+                  ],
+
+                  Text(
+                    hasRegistered
+                        ? 'Phòng của bạn'
+                        : isAdmin
+                            ? 'Danh sách tất cả phòng'
+                            : 'Danh sách phòng ký túc xá',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: primaryText,
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  if (visibleRooms.isEmpty)
+                    _buildEmptyState(
+                      hasRegistered
+                          ? 'Không tìm thấy thông tin phòng đã đăng ký. Vui lòng liên hệ ban quản lý.'
+                          : 'Chưa có phòng phù hợp.',
+                      cardColor,
+                      secondaryText,
+                    )
+                  else
+                    ...visibleRooms.map(
+                      (room) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildRoomCard(
+                          room,
+                          currentUser,
+                          isAdmin,
+                          isDark,
+                          cardColor,
+                          primaryText,
+                          secondaryText,
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 28),
+                ],
               );
             },
           ),
@@ -204,85 +280,164 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  // ===========================================================================
-  // 1. THẺ TÌNH TRẠNG CƯ TRÚ CỦA SINH VIÊN (Student Portal)
-  // ===========================================================================
-  Widget _buildStudentResidencyStatusCard(
-    User user,
-    bool isDark,
-    Color cardBg,
-    Color textPrimary,
-    Color textSecondary,
-    Color borderColor,
-    Color brandNavy,
-    Color brandOrange,
-  ) {
-    final bool hasApprovedRoom = user.roomStatus == RoomStatus.approved && user.pendingRoomName != null;
-    final bool isPending = user.roomStatus == RoomStatus.pending;
+  // ==========================================
+  // TRẠNG THÁI CƯ TRÚ
+  // ==========================================
 
-    Color statusColor = hasApprovedRoom
-        ? const Color(0xFF059669)
-        : (isPending ? brandOrange : const Color(0xFF64748B));
+  Widget _buildResidencyCard(
+    User user,
+    Color cardColor,
+    Color primaryText,
+    Color secondaryText,
+  ) {
+    final approved =
+        user.roomStatus == RoomStatus.approved;
+
+    final pending =
+        user.roomStatus == RoomStatus.pending;
+
+    final rejected =
+        user.roomStatus == RoomStatus.rejected;
+
+    final Color statusColor = approved
+        ? green
+        : pending
+            ? orange
+            : rejected
+                ? red
+                : const Color(0xFF64748B);
+
+    String title;
+    String description;
+
+    if (approved) {
+      title =
+          'Phòng đang cư trú: ${user.pendingRoomName ?? "Chưa xác định"}';
+      description = 'Trạng thái: Đã được duyệt cư trú';
+    } else if (pending) {
+      title =
+          'Đang chờ duyệt: ${user.pendingRoomName ?? "Phòng KTX"}';
+      description =
+          'Yêu cầu đã gửi đến ban quản lý ký túc xá.';
+    } else if (rejected) {
+      title = 'Yêu cầu đăng ký bị từ chối';
+      description = 'Bạn có thể lựa chọn phòng khác.';
+    } else {
+      title = 'Chưa đăng ký phòng nội trú';
+      description =
+          'Hãy lựa chọn một phòng còn chỗ để đăng ký.';
+    }
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: cardBg,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasApprovedRoom ? const Color(0xFFA7F3D0) : (isPending ? const Color(0xFFFED7AA) : borderColor),
+          color: statusColor.withValues(alpha: 0.5),
           width: 1.5,
         ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor:
+                statusColor.withValues(alpha: 0.12),
+            child: Icon(
+              approved
+                  ? Icons.home_work_rounded
+                  : pending
+                      ? Icons.hourglass_top_rounded
+                      : Icons.info_outline,
+              color: statusColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: primaryText,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: secondaryText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // THỐNG KÊ ADMIN
+  // ==========================================
+
+  Widget _buildAdminSummary(
+    List<Room> rooms,
+    Color cardColor,
+    Color primaryText,
+    Color secondaryText,
+  ) {
+    final total = rooms.length;
+
+    final available =
+        rooms.where((room) => room.hasAvailableBeds()).length;
+
+    final full = total - available;
+
+    final totalCapacity = rooms.fold<int>(
+      0,
+      (sum, room) => sum + room.capacity,
+    );
+
+    final totalOccupancy = rooms.fold<int>(
+      0,
+      (sum, room) => sum + room.currentOccupancy,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Text(
+            'Tổng quan phòng KTX',
+            style: TextStyle(
+              color: primaryText,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  hasApprovedRoom
-                      ? Icons.home_work_rounded
-                      : (isPending ? Icons.hourglass_top_rounded : Icons.info_outline_rounded),
-                  color: statusColor,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      hasApprovedRoom
-                          ? 'Phòng đang cư trú: ${user.pendingRoomName}'
-                          : (isPending
-                              ? 'Đang chờ Admin duyệt: ${user.pendingRoomName ?? "Phòng KTX"}'
-                              : 'Chưa đăng ký phòng nội trú'),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      hasApprovedRoom
-                          ? 'Hợp đồng cư trú có hiệu lực • Hạn 31/12/2026'
-                          : (isPending
-                              ? 'Hồ sơ đã gửi lên Ban Quản lý, vui lòng chờ duyệt.'
-                              : 'Vui lòng chọn phòng còn trống bên dưới và bấm "Đăng ký".'),
-                      style: TextStyle(fontSize: 12, color: textSecondary),
-                    ),
-                  ],
-                ),
+              _statItem('Tổng phòng', '$total', navy),
+              _statItem('Còn chỗ', '$available', green),
+              _statItem('Đã đầy', '$full', red),
+              _statItem(
+                'Tổng sĩ số',
+                '$totalOccupancy/$totalCapacity',
+                orange,
               ),
             ],
           ),
@@ -291,169 +446,138 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  // ===========================================================================
-  // 2. BỐN THỐNG KÊ NHANH CHO ADMIN (CRUD Overview)
-  // ===========================================================================
-  Widget _buildAdminRoomsSummary(
-    List<Room> rooms,
-    bool isDark,
-    Color cardBg,
-    Color textPrimary,
-    Color textSecondary,
-    Color borderColor,
-    Color brandNavy,
+  Widget _statItem(
+    String title,
+    String value,
+    Color color,
   ) {
-    final int totalRooms = rooms.length;
-    final int availableRooms = rooms.where((r) => r.hasAvailableBeds()).length;
-    final int fullRooms = totalRooms - availableRooms;
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      width: 135,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildStatMini('TỔNG SỐ PHÒNG', '$totalRooms', const Color(0xFF2563EB), textSecondary),
-          Container(width: 1, height: 32, color: borderColor),
-          _buildStatMini('CÒN CHỖ TRỐNG', '$availableRooms', const Color(0xFF059669), textSecondary),
-          Container(width: 1, height: 32, color: borderColor),
-          _buildStatMini('ĐÃ ĐẦY CHỖ', '$fullRooms', const Color(0xFFDC2626), textSecondary),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatMini(String title, String value, Color color, Color textSecondary) {
-    return Column(
-      children: [
-        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color)),
-        const SizedBox(height: 2),
-        Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textSecondary)),
-      ],
-    );
-  }
+  // ==========================================
+  // TÌM KIẾM VÀ LỌC
+  // ==========================================
 
-  // ===========================================================================
-  // 3. BỘ LỌC TÒA NHÀ & TÌM KIẾM
-  // ===========================================================================
-  Widget _buildFilterBar(
-    bool isDark,
-    Color cardBg,
-    Color textPrimary,
-    Color textSecondary,
-    Color borderColor,
-    Color brandNavy,
-  ) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.search_rounded, size: 18, color: textSecondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                    style: TextStyle(fontSize: 13, color: textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Tìm theo số phòng, tòa...',
-                      hintStyle: TextStyle(fontSize: 12, color: textSecondary),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        _buildChipFilter('Tất cả', 'all', brandNavy, isDark),
-        const SizedBox(width: 4),
-        _buildChipFilter('Tòa A', 'Tòa A', brandNavy, isDark),
-        const SizedBox(width: 4),
-        _buildChipFilter('Tòa B', 'Tòa B', brandNavy, isDark),
-      ],
-    );
-  }
-
-  Widget _buildChipFilter(String label, String value, Color brandNavy, bool isDark) {
-    final bool isSelected = _selectedBuildingFilter == value;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedBuildingFilter = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? brandNavy : (isDark ? const Color(0xFF1E293B) : Colors.white),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isSelected ? brandNavy : const Color(0xFFCBD5E1)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: isSelected ? Colors.white : (isDark ? Colors.white70 : const Color(0xFF475569)),
-          ),
+  Widget _buildSearchBar(Color cardColor) {
+    return TextField(
+      onChanged: (value) {
+        setState(() {
+          _searchQuery = value;
+        });
+      },
+      decoration: InputDecoration(
+        hintText: 'Tìm theo số phòng, tòa nhà...',
+        prefixIcon: const Icon(Icons.search),
+        filled: true,
+        fillColor: cardColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
       ),
     );
   }
 
-  // ===========================================================================
-  // 4. THẺ PHÒNG CHI TIẾT (Phân quyền Sinh viên vs Admin CRUD)
-  // ===========================================================================
-  Widget _buildRoomCard({
-    required Room room,
-    required bool isAdmin,
-    required User currentUser,
-    required bool isDark,
-    required Color cardBg,
-    required Color textPrimary,
-    required Color textSecondary,
-    required Color borderColor,
-    required Color brandNavy,
-    required Color brandOrange,
-  }) {
-    final double ratio = room.capacity > 0 ? (room.currentOccupancy / room.capacity) : 0;
-    final int percent = (ratio * 100).toInt();
-    final bool isFull = !room.hasAvailableBeds();
+  Widget _buildBuildingFilters() {
+    return Wrap(
+      spacing: 8,
+      children: [
+        _filterChip('Tất cả', 'all'),
+        _filterChip('Tòa A', 'Tòa A'),
+        _filterChip('Tòa B', 'Tòa B'),
+      ],
+    );
+  }
 
-    // Kiểm tra xem sinh viên có đang ở phòng này hoặc đang chờ duyệt không
-    final bool isApprovedInThisRoom = !isAdmin &&
-        currentUser.roomStatus == RoomStatus.approved &&
-        currentUser.pendingRoomName != null &&
-        (currentUser.pendingRoomName!.toLowerCase().contains(room.name.toLowerCase()) ||
-            room.name.toLowerCase().contains(currentUser.pendingRoomName!.toLowerCase()));
+  Widget _filterChip(String title, String value) {
+    final selected = _selectedBuildingFilter == value;
 
-    final bool isPendingInThisRoom = !isAdmin &&
-        currentUser.roomStatus == RoomStatus.pending &&
-        currentUser.pendingRoomName != null &&
-        (currentUser.pendingRoomName!.toLowerCase().contains(room.name.toLowerCase()) ||
-            room.name.toLowerCase().contains(currentUser.pendingRoomName!.toLowerCase()));
+    return ChoiceChip(
+      label: Text(title),
+      selected: selected,
+      selectedColor: navy.withValues(alpha: 0.15),
+      onSelected: (_) {
+        setState(() {
+          _selectedBuildingFilter = value;
+        });
+      },
+    );
+  }
+
+  // ==========================================
+  // DANH SÁCH PHÒNG
+  // ==========================================
+
+  Widget _buildRoomCard(
+    Room room,
+    User user,
+    bool isAdmin,
+    bool isDark,
+    Color cardColor,
+    Color primaryText,
+    Color secondaryText,
+  ) {
+    final ratio = room.capacity > 0
+        ? (room.currentOccupancy / room.capacity)
+            .clamp(0.0, 1.0)
+        : 0.0;
+
+    final percent = (ratio * 100).round();
+
+    final isFull = !room.hasAvailableBeds();
+
+    final isOwnRoom =
+        !isAdmin && _isStudentRoom(room, user);
+
+    final approved =
+        isOwnRoom && user.roomStatus == RoomStatus.approved;
+
+    final pending =
+        isOwnRoom && user.roomStatus == RoomStatus.pending;
+
+    final highlight = approved
+        ? green
+        : pending
+            ? orange
+            : Colors.transparent;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardBg,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isApprovedInThisRoom
-              ? const Color(0xFF10B981)
-              : (isPendingInThisRoom ? const Color(0xFFF59E0B) : borderColor),
-          width: (isApprovedInThisRoom || isPendingInThisRoom) ? 1.5 : 1.0,
+          color: highlight == Colors.transparent
+              ? (isDark
+                  ? const Color(0xFF334155)
+                  : const Color(0xFFE2E8F0))
+              : highlight,
+          width: approved || pending ? 1.5 : 1,
         ),
         boxShadow: [
           BoxShadow(
@@ -466,17 +590,18 @@ class _RoomScreenState extends State<RoomScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tiêu đề phòng + Badge còn chỗ
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.3) : const Color(0xFFEEF2FF),
+                  color: navy.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.apartment_rounded, color: brandNavy, size: 22),
+                child: const Icon(
+                  Icons.apartment_rounded,
+                  color: navy,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -486,443 +611,586 @@ class _RoomScreenState extends State<RoomScreen> {
                     Text(
                       'Phòng ${room.name} - ${room.buildingId}',
                       style: TextStyle(
+                        color: primaryText,
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: textPrimary,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
-                      '${room.fixedPrice.toInt()} đ / tháng • ${room.roomType}',
-                      style: TextStyle(fontSize: 12, color: textSecondary, fontWeight: FontWeight.w600),
+                      '${room.fixedPrice.toStringAsFixed(0)} đ/tháng • ${room.roomType}',
+                      style: TextStyle(
+                        color: secondaryText,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isFull
-                      ? const Color(0xFFFEF2F2)
-                      : const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isFull ? const Color(0xFFFECACA) : const Color(0xFFA7F3D0),
-                  ),
-                ),
-                child: Text(
-                  isFull ? 'HẾT CHỖ' : '${room.availableBeds}/${room.capacity} CÒN CHỖ',
+              Chip(
+                label: Text(
+                  isFull
+                      ? 'HẾT CHỖ'
+                      : '${room.availableBeds}/${room.capacity} CÒN CHỖ',
                   style: TextStyle(
+                    color: isFull ? red : green,
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: isFull ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+                backgroundColor: isFull
+                    ? const Color(0xFFFEF2F2)
+                    : const Color(0xFFECFDF5),
               ),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // Thanh tiến trình sĩ số
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Sĩ số hiện tại: ${room.currentOccupancy}/${room.capacity} người',
-                style: TextStyle(fontSize: 12, color: textSecondary, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: secondaryText,
+                  fontSize: 12,
+                ),
               ),
               Text(
                 '$percent%',
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: isFull ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                  color: isFull ? red : green,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+
+          const SizedBox(height: 8),
+
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: ratio,
-              minHeight: 6,
-              backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                isFull ? const Color(0xFFDC2626) : const Color(0xFF10B981),
+              minHeight: 7,
+              backgroundColor: const Color(0xFFE2E8F0),
+              valueColor: AlwaysStoppedAnimation(
+                isFull ? red : const Color(0xFF10B981),
               ),
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
-          // ===================================================================
-          // PHÂN QUYỀN HÀNH ĐỘNG
-          // ===================================================================
-          if (!isAdmin)
-            // Giao diện Sinh viên: Đăng ký phòng
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (isApprovedInThisRoom)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFA7F3D0)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 14),
-                        SizedBox(width: 4),
-                        Text('Phòng của bạn', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
-                      ],
-                    ),
-                  )
-                else if (isPendingInThisRoom)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.hourglass_top_rounded, color: Color(0xFFD97706), size: 14),
-                        SizedBox(width: 4),
-                        Text('Đang chờ duyệt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFFD97706))),
-                      ],
-                    ),
-                  )
-                else if (isFull)
-                  OutlinedButton(
-                    onPressed: null,
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('Phòng đã đầy', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                  )
-                else
-                  ElevatedButton.icon(
-                    onPressed: () => _handleStudentRegisterRoom(context, room, currentUser),
-                    icon: const Icon(Icons.app_registration_rounded, size: 16),
-                    label: const Text('Đăng ký phòng này', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandNavy,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-              ],
+          if (isAdmin)
+            _buildAdminActions(room)
+          else if (approved)
+            _statusButton(
+              'Phòng của bạn',
+              Icons.check_circle,
+              green,
+            )
+          else if (pending)
+            _statusButton(
+              'Đang chờ duyệt',
+              Icons.hourglass_top,
+              orange,
+            )
+          else if (isFull)
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton(
+                onPressed: null,
+                child: const Text('Phòng đã đầy'),
+              ),
             )
           else
-            // Giao diện Admin: Đầy đủ CRUD (Sửa, Xóa, Bớt SV, Xếp chỗ)
-            Row(
-              children: [
-                // Nút Sửa thông tin phòng
-                IconButton(
-                  tooltip: 'Sửa thông tin phòng',
-                  icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF2563EB)),
-                  onPressed: () => _showEditRoomDialog(context, room, isDark, brandNavy, borderColor),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: () =>
+                    _registerRoom(room, user),
+                icon: const Icon(Icons.app_registration),
+                label: const Text('Đăng ký phòng này'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: navy,
+                  foregroundColor: Colors.white,
                 ),
-                // Nút Xóa phòng
-                IconButton(
-                  tooltip: 'Xóa phòng',
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                  onPressed: () => _confirmDeleteRoom(context, room),
-                ),
-                const Spacer(),
-                // Nút Bớt SV (-)
-                OutlinedButton.icon(
-                  onPressed: () {
-                    if (room.removeOccupant()) {
-                      setState(() {});
-                      FirestoreService().updateRoomOccupancy(room.name, room.currentOccupancy);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Phòng hiện đang trống!')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.remove, size: 14),
-                  label: const Text('Bớt SV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFDC2626),
-                    side: const BorderSide(color: Color(0xFFFCA5A5)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Nút Xếp chỗ (+)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    if (room.addOccupant()) {
-                      setState(() {});
-                      FirestoreService().updateRoomOccupancy(room.name, room.currentOccupancy);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Phòng đã đạt tối đa sức chứa!')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.add, size: 14),
-                  label: const Text('Xếp chỗ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: brandNavy,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  ),
-                ),
-              ],
+              ),
             ),
         ],
       ),
     );
   }
 
-  // ===========================================================================
-  // 5. CÁC HỘP THOẠI CRUD DÀNH CHO ADMIN & SINH VIÊN
-  // ===========================================================================
-
-  // Sinh viên gửi yêu cầu đăng ký phòng
-  void _handleStudentRegisterRoom(BuildContext context, Room room, User user) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.app_registration_rounded, color: Color(0xFF1E3A8A)),
-            SizedBox(width: 8),
-            Text('Đăng ký phòng KTX', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+  Widget _statusButton(
+    String title,
+    IconData icon,
+    Color color,
+  ) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 9,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // ĐĂNG KÝ PHÒNG
+  // ==========================================
+
+  Future<void> _registerRoom(Room room, User user) async {
+    if (_hasRegisteredRoom(user)) {
+      _showMessage(
+        'Bạn đã đăng ký hoặc đang cư trú ở một phòng khác.',
+        error: true,
+      );
+      return;
+    }
+
+    if (user.id == null) {
+      _showMessage(
+        'Không tìm thấy mã sinh viên. Vui lòng đăng nhập lại.',
+        error: true,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xác nhận đăng ký phòng'),
         content: Text(
-          'Bạn có chắc chắn muốn gửi đơn xin đăng ký cư trú tại Phòng ${room.name} - ${room.buildingId} (Giá thuê: ${room.fixedPrice.toInt()} đ/tháng)?',
-          style: const TextStyle(fontSize: 13),
+          'Bạn có muốn đăng ký Phòng ${room.name} - ${room.buildingId}?\n\n'
+          'Giá: ${room.fixedPrice.toStringAsFixed(0)} đ/tháng\n'
+          'Chỗ trống: ${room.availableBeds}',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await FirestoreService().requestRoomRegistration(user.id ?? 6, 'Phòng ${room.name}');
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: const Color(0xFF059669),
-                  content: Row(
-                    children: [
-                      const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Text('Đã gửi yêu cầu đăng ký Phòng ${room.name} thành công!'),
-                    ],
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), foregroundColor: Colors.white),
-            child: const Text('Xác nhận đăng ký'),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, true),
+            child: const Text('Xác nhận'),
           ),
         ],
       ),
     );
+
+    if (confirmed != true) return;
+
+    try {
+      // Lưu tên phòng kèm tòa để phân biệt.
+      final selectedRoom =
+          'Phòng ${room.name} - ${room.buildingId}';
+
+      await _service.requestRoomRegistration(
+        user.id!,
+        selectedRoom,
+      );
+
+      _showMessage(
+        'Đã gửi yêu cầu đăng ký phòng ${room.name}.',
+      );
+    } catch (error) {
+      _showMessage(
+        'Không thể đăng ký phòng: $error',
+        error: true,
+      );
+    }
   }
 
-  // Admin thêm phòng mới (CRUD - Create)
-  void _showAddRoomDialog(BuildContext context, bool isDark, Color brandNavy, Color borderColor) {
-    final nameCtrl = TextEditingController();
-    final priceCtrl = TextEditingController(text: '1500000');
-    String selectedBuilding = 'Tòa A';
-    int selectedCapacity = 4;
-    String selectedType = 'Thường';
+  // ==========================================
+  // ADMIN - CÁC NÚT QUẢN LÝ
+  // ==========================================
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          title: const Text('Thêm phòng KTX mới', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Tên/Số phòng (Ví dụ: 103, 202)'),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedBuilding,
-                  decoration: const InputDecoration(labelText: 'Tòa nhà'),
-                  items: const [
-                    DropdownMenuItem(value: 'Tòa A', child: Text('Tòa A (Nam)')),
-                    DropdownMenuItem(value: 'Tòa B', child: Text('Tòa B (Nữ)')),
-                  ],
-                  onChanged: (val) => setDlgState(() => selectedBuilding = val ?? 'Tòa A'),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<int>(
-                  value: selectedCapacity,
-                  decoration: const InputDecoration(labelText: 'Sức chứa tối đa'),
-                  items: const [
-                    DropdownMenuItem(value: 4, child: Text('4 Giường')),
-                    DropdownMenuItem(value: 6, child: Text('6 Giường')),
-                    DropdownMenuItem(value: 8, child: Text('8 Giường')),
-                  ],
-                  onChanged: (val) => setDlgState(() => selectedCapacity = val ?? 4),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: const InputDecoration(labelText: 'Loại phòng'),
-                  items: const [
-                    DropdownMenuItem(value: 'Thường', child: Text('Thường')),
-                    DropdownMenuItem(value: 'Dịch vụ VIP', child: Text('Dịch vụ VIP')),
-                  ],
-                  onChanged: (val) => setDlgState(() => selectedType = val ?? 'Thường'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: priceCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Giá tiền thuê (VNĐ/tháng)'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                final newRoom = Room(
-                  buildingId: selectedBuilding,
-                  name: nameCtrl.text.trim(),
-                  capacity: selectedCapacity,
-                  roomType: selectedType,
-                  fixedPrice: double.tryParse(priceCtrl.text.trim()) ?? 1500000,
-                  currentOccupancy: 0,
-                );
-                await FirestoreService().addRoom(newRoom);
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: const Color(0xFF059669),
-                    content: Text('Đã thêm thành công Phòng ${newRoom.name} - ${newRoom.buildingId}!'),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: brandNavy, foregroundColor: Colors.white),
-              child: const Text('Lưu phòng'),
-            ),
-          ],
+  Widget _buildAdminActions(Room room) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => _showRoomDialog(room: room),
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Sửa'),
         ),
-      ),
+        OutlinedButton.icon(
+          onPressed: () => _deleteRoom(room),
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('Xóa'),
+        ),
+        OutlinedButton.icon(
+          onPressed: room.currentOccupancy > 0
+              ? () => _updateOccupancy(room, -1)
+              : null,
+          icon: const Icon(Icons.remove),
+          label: const Text('Bớt SV'),
+        ),
+        FilledButton.icon(
+          onPressed: room.hasAvailableBeds()
+              ? () => _updateOccupancy(room, 1)
+              : null,
+          icon: const Icon(Icons.add),
+          label: const Text('Xếp chỗ'),
+        ),
+      ],
     );
   }
 
-  // Admin sửa phòng (CRUD - Update)
-  void _showEditRoomDialog(BuildContext context, Room room, bool isDark, Color brandNavy, Color borderColor) {
-    final priceCtrl = TextEditingController(text: room.fixedPrice.toInt().toString());
-    int selectedCapacity = room.capacity;
-    String selectedType = room.roomType;
+  Future<void> _updateOccupancy(
+    Room room,
+    int change,
+  ) async {
+    final newOccupancy =
+        room.currentOccupancy + change;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          title: Text('Sửa Phòng ${room.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<int>(
-                  value: selectedCapacity,
-                  decoration: const InputDecoration(labelText: 'Sức chứa tối đa'),
-                  items: const [
-                    DropdownMenuItem(value: 4, child: Text('4 Giường')),
-                    DropdownMenuItem(value: 6, child: Text('6 Giường')),
-                    DropdownMenuItem(value: 8, child: Text('8 Giường')),
-                  ],
-                  onChanged: (val) => setDlgState(() => selectedCapacity = val ?? 4),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: const InputDecoration(labelText: 'Loại phòng'),
-                  items: const [
-                    DropdownMenuItem(value: 'Thường', child: Text('Thường')),
-                    DropdownMenuItem(value: 'Dịch vụ VIP', child: Text('Dịch vụ VIP')),
-                  ],
-                  onChanged: (val) => setDlgState(() => selectedType = val ?? 'Thường'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: priceCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Giá tiền thuê (VNĐ/tháng)'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-            ElevatedButton(
-              onPressed: () async {
-                room.capacity = selectedCapacity;
-                room.roomType = selectedType;
-                room.fixedPrice = double.tryParse(priceCtrl.text.trim()) ?? room.fixedPrice;
+    if (newOccupancy < 0 ||
+        newOccupancy > room.capacity) {
+      _showMessage('Sĩ số không hợp lệ.', error: true);
+      return;
+    }
 
-                final docId = room.id ?? 'room_${room.buildingId}_${room.name}'.replaceAll(' ', '_');
-                await FirestoreService().updateRoom(docId, room);
-                Navigator.pop(ctx);
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: const Color(0xFF059669),
-                    content: Text('Đã cập nhật thông tin Phòng ${room.name}!'),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: brandNavy, foregroundColor: Colors.white),
-              child: const Text('Cập nhật'),
-            ),
-          ],
-        ),
-      ),
-    );
+    try {
+      await _service.updateRoomOccupancy(
+        room.name,
+        newOccupancy,
+      );
+
+      _showMessage('Đã cập nhật sĩ số phòng.');
+    } catch (error) {
+      _showMessage(
+        'Không thể cập nhật sĩ số: $error',
+        error: true,
+      );
+    }
   }
 
-  // Admin xóa phòng (CRUD - Delete)
-  void _confirmDeleteRoom(BuildContext context, Room room) {
-    showDialog(
+  // ==========================================
+  // ADMIN - THÊM / SỬA PHÒNG
+  // ==========================================
+
+  Future<void> _showRoomDialog({Room? room}) async {
+    final nameCtrl =
+        TextEditingController(text: room?.name ?? '');
+
+    final priceCtrl = TextEditingController(
+      text: room?.fixedPrice.toStringAsFixed(0) ?? '',
+    );
+
+    String building = room?.buildingId ?? 'Tòa A';
+    String roomType = room?.roomType ?? 'Thường';
+    int capacity = room?.capacity ?? 4;
+
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Xác nhận xóa phòng', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFFDC2626))),
-        content: Text('Bạn có chắc chắn muốn xóa Phòng ${room.name} (${room.buildingId}) khỏi hệ thống? Dữ liệu không thể hoàn tác.'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(
+              room == null
+                  ? 'Thêm phòng KTX'
+                  : 'Sửa phòng ${room.name}',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    enabled: room == null,
+                    decoration: const InputDecoration(
+                      labelText: 'Tên phòng',
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  DropdownButtonFormField<String>(
+                    initialValue: building,
+                    decoration: const InputDecoration(
+                      labelText: 'Tòa nhà',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Tòa A',
+                        child: Text('Tòa A'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Tòa B',
+                        child: Text('Tòa B'),
+                      ),
+                    ],
+                    onChanged: room != null
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              setDialogState(() {
+                                building = value;
+                              });
+                            }
+                          },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  DropdownButtonFormField<int>(
+                    initialValue: capacity,
+                    decoration: const InputDecoration(
+                      labelText: 'Sức chứa',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 4,
+                        child: Text('4 người'),
+                      ),
+                      DropdownMenuItem(
+                        value: 6,
+                        child: Text('6 người'),
+                      ),
+                      DropdownMenuItem(
+                        value: 8,
+                        child: Text('8 người'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          capacity = value;
+                        });
+                      }
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  DropdownButtonFormField<String>(
+                    initialValue: roomType,
+                    decoration: const InputDecoration(
+                      labelText: 'Loại phòng',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Thường',
+                        child: Text('Thường'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Dịch vụ VIP',
+                        child: Text('Dịch vụ VIP'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          roomType = value;
+                        });
+                      }
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Giá phòng (VNĐ/tháng)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final name = nameCtrl.text.trim();
+                  final price =
+                      double.tryParse(priceCtrl.text.trim());
+
+                  if (name.isEmpty ||
+                      price == null ||
+                      price < 0) {
+                    _showMessage(
+                      'Vui lòng nhập thông tin hợp lệ.',
+                      error: true,
+                    );
+                    return;
+                  }
+
+                  if (room != null &&
+                      capacity < room.currentOccupancy) {
+                    _showMessage(
+                      'Sức chứa không thể nhỏ hơn sĩ số.',
+                      error: true,
+                    );
+                    return;
+                  }
+
+                  try {
+                    if (room == null) {
+                      final newRoom = Room(
+                        buildingId: building,
+                        name: name,
+                        capacity: capacity,
+                        currentOccupancy: 0,
+                        roomType: roomType,
+                        fixedPrice: price,
+                      );
+
+                      await _service.addRoom(newRoom);
+                    } else {
+                      final updatedRoom = Room(
+                        id: room.id,
+                        buildingId: room.buildingId,
+                        name: room.name,
+                        capacity: capacity,
+                        currentOccupancy:
+                            room.currentOccupancy,
+                        roomType: roomType,
+                        fixedPrice: price,
+                      );
+
+                      await _service.updateRoom(
+                        room.id!,
+                        updatedRoom,
+                      );
+                    }
+
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+
+                    _showMessage('Lưu thông tin phòng thành công.');
+                  } catch (error) {
+                    _showMessage(
+                      'Không thể lưu phòng: $error',
+                      error: true,
+                    );
+                  }
+                },
+                child: const Text('Lưu'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    nameCtrl.dispose();
+    priceCtrl.dispose();
+  }
+
+  // ==========================================
+  // ADMIN - XÓA PHÒNG
+  // ==========================================
+
+  Future<void> _deleteRoom(Room room) async {
+    if (room.id == null) {
+      _showMessage('Không tìm thấy mã phòng.', error: true);
+      return;
+    }
+
+    if (room.currentOccupancy > 0) {
+      _showMessage(
+        'Phòng đang có sinh viên, không thể xóa.',
+        error: true,
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa phòng'),
+        content: Text(
+          'Bạn chắc chắn muốn xóa phòng ${room.name} - ${room.buildingId}?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          ElevatedButton(
-            onPressed: () async {
-              final docId = room.id ?? 'room_${room.buildingId}_${room.name}'.replaceAll(' ', '_');
-              await FirestoreService().deleteRoom(docId);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: const Color(0xFFDC2626),
-                  content: Text('Đã xóa Phòng ${room.name} khỏi hệ thống!'),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
-            child: const Text('Xác nhận xóa'),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _service.deleteRoom(room.id!);
+      _showMessage('Đã xóa phòng thành công.');
+    } catch (error) {
+      _showMessage(
+        'Không thể xóa phòng: $error',
+        error: true,
+      );
+    }
+  }
+
+  // ==========================================
+  // TRẠNG THÁI KHÔNG CÓ PHÒNG
+  // ==========================================
+
+  Widget _buildEmptyState(
+    String message,
+    Color cardColor,
+    Color secondaryText,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.meeting_room_outlined,
+            size: 44,
+            color: secondaryText,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: secondaryText),
           ),
         ],
       ),
