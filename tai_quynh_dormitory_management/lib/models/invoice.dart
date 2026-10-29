@@ -7,7 +7,7 @@ class Invoice {
   final double electricityFee;
   final double waterFee;
   final double totalAmount;
-  final String status; // 'unpaid', 'paid'
+  final String status;
   final int? orderCode;
 
   Invoice({
@@ -25,21 +25,30 @@ class Invoice {
 
   bool get isPaid => status == 'paid';
 
-  factory Invoice.fromJson(Map<String, dynamic> json, [String? id]) {
-    final roomFee = (json['room_fee'] as num?)?.toDouble() ?? 1500000;
-    final elec = (json['electricity_fee'] as num?)?.toDouble() ?? 450000;
-    final water = (json['water_fee'] as num?)?.toDouble() ?? 150000;
-    final total = (json['total_amount'] as num?)?.toDouble() ?? (roomFee + elec + water);
+  factory Invoice.fromJson(
+    Map<String, dynamic> json, [
+    String? id,
+  ]) {
+    final roomFee =
+        (json['room_fee'] as num?)?.toDouble() ?? 0;
+
+    final electricityFee =
+        (json['electricity_fee'] as num?)?.toDouble() ?? 0;
+
+    final waterFee =
+        (json['water_fee'] as num?)?.toDouble() ?? 0;
 
     return Invoice(
       id: id ?? json['id']?.toString() ?? '',
-      roomName: json['room_name']?.toString() ?? 'Phòng B101',
-      month: (json['month'] as num?)?.toInt() ?? 6,
-      year: (json['year'] as num?)?.toInt() ?? 2026,
+      roomName: json['room_name']?.toString() ?? '',
+      month: (json['month'] as num?)?.toInt() ?? 0,
+      year: (json['year'] as num?)?.toInt() ?? 0,
       roomFee: roomFee,
-      electricityFee: elec,
-      waterFee: water,
-      totalAmount: total,
+      electricityFee: electricityFee,
+      waterFee: waterFee,
+      totalAmount:
+          (json['total_amount'] as num?)?.toDouble() ??
+              roomFee + electricityFee + waterFee,
       status: json['status']?.toString() ?? 'unpaid',
       orderCode: (json['payos_order_code'] as num?)?.toInt(),
     );

@@ -1,880 +1,908 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../controllers/auth_controller.dart';
-import '../models/room.dart';
 import '../models/user.dart';
+import '../models/room.dart';
+import '../models/invoice.dart';
+import '../models/ticket.dart';
 import '../models/asset.dart';
 import '../models/announcement.dart';
-import '../models/ticket.dart';
-import '../models/invoice.dart';
 
-/// Dịch vụ quản lý dữ liệu trung tâm (Centralized Reactive Backend Service)
-/// Đồng bộ hai chiều:
-/// - Firebase Cloud Firestore (khi có mạng & kết nối backend)
-/// - Reactive In-Memory Store (phản hồi thời gian thực tức thì giữa mọi màn hình)
 class FirestoreService {
-  static final FirestoreService _instance = FirestoreService._internal();
+  static final FirestoreService _instance =
+      FirestoreService._();
+
   factory FirestoreService() => _instance;
-  FirestoreService._internal() {
-    _initFirestoreListeners();
+
+  FirestoreService._();
+
+  final FirebaseFirestore db =
+      FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> collection(
+    String name,
+  ) {
+    return db.collection('v2_$name');
   }
 
-  bool get isFirebaseAvailable {
-    try {
-      return Firebase.apps.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  FirebaseFirestore? get _db {
-    if (!isFirebaseAvailable) return null;
-    try {
-      return FirebaseFirestore.instance;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Collection References
-  CollectionReference? get buildingsRef => _db?.collection('buildings');
-  CollectionReference? get roomsRef => _db?.collection('rooms');
-  CollectionReference? get usersRef => _db?.collection('users');
-  CollectionReference? get contractsRef => _db?.collection('contracts');
-  CollectionReference? get invoicesRef => _db?.collection('invoices');
-  CollectionReference? get ticketsRef => _db?.collection('tickets');
-  CollectionReference? get announcementsRef => _db?.collection('announcements');
-  CollectionReference? get assetsRef => _db?.collection('assets');
-
-  // =====================================================================
-  // DỮ LIỆU GỐC TRUNG TÂM (Đồng bộ theo quan_ly_ktx.sql)
-  // =====================================================================
-  final List<User> _masterUsers = [
-    User(
-      id: 1,
-      username: 'admin',
-      email: 'admin@ktx.com',
-      fullName: 'Nguyễn Văn Quản Lý',
-      role: UserRole.admin,
-      phone: '0988888888',
-      hometown: 'Hà Nội',
-      mssv: 'ADMIN01',
-      className: 'Quản trị KTX',
-      gender: 'Nam',
-      roomStatus: RoomStatus.none,
-    ),
-    User(
-      id: 6,
-      username: 'wyn05',
-      email: 'wyn05@gmail.com',
-      fullName: 'Le Tuan Quynh',
-      mssv: '24104502',
-      phone: '0342130000',
-      className: 'ICT1.24105.3',
-      hometown: 'Điện Biên',
-      gender: 'Nam',
-      roomId: 101,
-      roomStatus: RoomStatus.approved,
-      role: UserRole.student,
-      pendingRoomName: 'Phòng B101 - Tòa B',
-    ),
-    User(
-      id: 2,
-      username: 'student1',
-      email: 'student1@ktx.com',
-      fullName: 'Trần Thị Quỳnh',
-      mssv: 'SV202401',
-      phone: '0977777777',
-      className: 'CNTT01',
-      hometown: 'Hải Phòng',
-      gender: 'Nữ',
-      roomId: 101,
-      roomStatus: RoomStatus.approved,
-      role: UserRole.student,
-      pendingRoomName: 'Phòng 101 - Tòa A',
-    ),
-    User(
-      id: 3,
-      username: 'student2',
-      email: 'student2@ktx.com',
-      fullName: 'Lê Văn Đông',
-      mssv: 'SV202402',
-      phone: '0966666666',
-      className: 'Kế Toán 02',
-      hometown: 'Đà Nẵng',
-      gender: 'Nam',
-      roomId: 102,
-      roomStatus: RoomStatus.approved,
-      role: UserRole.student,
-      pendingRoomName: 'Phòng 102 - Tòa A',
-    ),
-    User(
-      id: 4,
-      username: 'student3',
-      email: 'student3@ktx.com',
-      fullName: 'Đặng Đức Tài',
-      mssv: 'SV202403',
-      phone: '0912345678',
-      className: 'CNTT02',
-      hometown: 'Hà Nội',
-      gender: 'Nam',
-      roomStatus: RoomStatus.pending,
-      role: UserRole.student,
-      pendingRoomName: 'Phòng 201 - Tòa A',
-    ),
-  ];
-
-  final List<Room> _masterRooms = [
-    Room(
-      id: 'room_101',
-      buildingId: 'Tòa A',
-      name: '101',
-      capacity: 4,
-      currentOccupancy: 2,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-    Room(
-      id: 'room_102',
-      buildingId: 'Tòa A',
-      name: '102',
-      capacity: 4,
-      currentOccupancy: 1,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-    Room(
-      id: 'room_201',
-      buildingId: 'Tòa A',
-      name: '201',
-      capacity: 6,
-      currentOccupancy: 1,
-      roomType: 'Dịch vụ VIP',
-      fixedPrice: 2200000,
-    ),
-    Room(
-      id: 'room_B101',
-      buildingId: 'Tòa B',
-      name: 'B101',
-      capacity: 4,
-      currentOccupancy: 2,
-      roomType: 'Thường',
-      fixedPrice: 1500000,
-    ),
-  ];
-
-  final List<Invoice> _masterInvoices = [
-    Invoice(
-      id: 'inv_B101_6_2026',
-      roomName: 'Phòng B101 - Tòa B',
-      month: 6,
-      year: 2026,
-      roomFee: 1500000,
-      electricityFee: 450000,
-      waterFee: 150000,
-      totalAmount: 2100000,
-      status: 'unpaid',
-      orderCode: 24104502626,
-    ),
-    Invoice(
-      id: 'inv_101_5_2026',
-      roomName: 'Phòng 101 - Tòa A',
-      month: 5,
-      year: 2026,
-      roomFee: 1500000,
-      electricityFee: 300000,
-      waterFee: 120000,
-      totalAmount: 1920000,
-      status: 'paid',
-      orderCode: 24104502525,
-    ),
-    Invoice(
-      id: 'inv_201_6_2026',
-      roomName: 'Phòng 201 - Tòa A',
-      month: 6,
-      year: 2026,
-      roomFee: 2200000,
-      electricityFee: 540000,
-      waterFee: 180000,
-      totalAmount: 2920000,
-      status: 'unpaid',
-      orderCode: 24104502628,
-    ),
-  ];
-
-  final List<Ticket> _masterTickets = [
-    Ticket(
-      id: 'ticket_1',
-      roomName: 'Phòng B101 - Tòa B',
-      studentName: 'Le Tuan Quynh',
-      title: 'Hỏng bóng đèn tuýp LED',
-      description: 'Bóng đèn nhà vệ sinh bị chập chờn nhấp nháy liên tục.',
-      urgency: 'medium',
-      status: 'pending',
-      date: '25/06/2026',
-    ),
-    Ticket(
-      id: 'ticket_2',
-      roomName: 'Phòng 101 - Tòa A',
-      studentName: 'Trần Thị Quỳnh',
-      title: 'Điều hòa rò rỉ nước',
-      description: 'Dàn lạnh điều hòa nhỏ giọt nước xuống sàn nhà.',
-      urgency: 'high',
-      status: 'processing',
-      date: '24/06/2026',
-    ),
-  ];
-
-  final List<Announcement> _masterAnnouncements = [
-    Announcement(
-      id: 'ann_1',
-      title: 'Thông báo đóng tiền phòng tháng 6/2026',
-      content: 'Yêu cầu toàn bộ sinh viên kiểm tra hóa đơn trên hệ thống và hoàn thành thanh toán trực tuyến qua cổng VietQR PayOS trước ngày 20/06/2026.',
-      department: 'Phòng Tài chính',
-      date: '25/6/2026',
-    ),
-    Announcement(
-      id: 'ann_2',
-      title: 'Bảo trì điều hòa phòng VIP ngày 22/06',
-      content: 'Phòng ban cơ sở vật chất sẽ tiến hành vệ sinh bảo trì hệ thống điều hòa tại tầng 2 các tòa nhà.',
-      department: 'Ban Cơ sở vật chất',
-      date: '20/6/2026',
-    ),
-  ];
-
-  final List<RoomAsset> _masterAssets = [
-    RoomAsset(
-      id: 'asset_1',
-      name: 'Giường tầng sắt',
-      description: 'Giường sắt 2 tầng tiêu chuẩn',
-      quantity: 2,
-      status: 'new',
-    ),
-    RoomAsset(
-      id: 'asset_2',
-      name: 'Điều hòa 12000 BTU',
-      description: 'Điều hòa Daikin làm mát phòng VIP',
-      quantity: 1,
-      status: 'new',
-    ),
-    RoomAsset(
-      id: 'asset_3',
-      name: 'Quạt trần Điện Cơ',
-      description: 'Quạt trần 3 cánh mát mẻ',
-      quantity: 2,
-      status: 'new',
-    ),
-  ];
-
-  // Broadcast Controllers
-  final _usersController = StreamController<List<User>>.broadcast();
-  final _roomsController = StreamController<List<Room>>.broadcast();
-  final _invoicesController = StreamController<List<Invoice>>.broadcast();
-  final _ticketsController = StreamController<List<Ticket>>.broadcast();
-  final _announcementsController = StreamController<List<Announcement>>.broadcast();
-
-  void _initFirestoreListeners() {
-    // Nếu kết nối Firestore khả dụng, lắng nghe cập nhật từ đám mây
-    if (isFirebaseAvailable) {
-      try {
-        usersRef?.snapshots().listen((snap) {
-          if (snap.docs.isNotEmpty) {
-            for (var doc in snap.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              final user = User.fromJson(data);
-              final idx = _masterUsers.indexWhere((u) => u.username.toLowerCase() == user.username.toLowerCase() || (u.id != null && u.id == user.id));
-              if (idx >= 0) {
-                _masterUsers[idx] = user;
-              } else {
-                _masterUsers.add(user);
-              }
-            }
-            _usersController.add(List<User>.from(_masterUsers));
-          }
-        }, onError: (e) => debugPrint('Firestore users listener: $e'));
-
-        roomsRef?.snapshots().listen((snap) {
-          if (snap.docs.isNotEmpty) {
-            for (var doc in snap.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              final room = Room.fromJson(data, doc.id);
-              final idx = _masterRooms.indexWhere((r) => r.name.toLowerCase() == room.name.toLowerCase() || r.id == room.id);
-              if (idx >= 0) {
-                _masterRooms[idx] = room;
-              } else {
-                _masterRooms.add(room);
-              }
-            }
-            _roomsController.add(List<Room>.from(_masterRooms));
-          }
-        }, onError: (e) => debugPrint('Firestore rooms listener: $e'));
-      } catch (e) {
-        debugPrint('Firestore listeners init notice: $e');
-      }
+  void requireAdmin() {
+    if (!AuthController.instance.isAdmin) {
+      throw StateError(
+        'Chỉ quản trị viên được thực hiện thao tác này.',
+      );
     }
   }
 
-  // =====================================================================
-  // 1. Quản lý Sinh viên (Users - Reactive & Backend Synced)
-  // =====================================================================
-  Stream<List<User>> getStudentsStream() async* {
-    yield List<User>.from(_masterUsers.where((u) => u.role == UserRole.student));
-    yield* _usersController.stream.map((list) => list.where((u) => u.role == UserRole.student).toList());
+  static String roomLabel(Room room) {
+    return 'Phòng ${room.name} - ${room.buildingId}';
   }
 
-  /// Sinh viên gửi đơn đăng ký xếp phòng KTX
-  Future<void> requestRoomRegistration(int userId, String roomName) async {
-    final idx = _masterUsers.indexWhere((u) => u.id == userId);
-    if (idx >= 0) {
-      _masterUsers[idx].roomStatus = RoomStatus.pending;
-      _masterUsers[idx].pendingRoomName = roomName;
-      AuthController.instance.syncCurrentUser(_masterUsers[idx]);
-      _usersController.add(List<User>.from(_masterUsers));
-    }
-
-    if (usersRef != null) {
-      try {
-        final query = await usersRef!.where('id', isEqualTo: userId).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          await query.docs.first.reference.update({
-            'pending_room_name': roomName,
-            'room_status': 'pending',
-            'updated_at': FieldValue.serverTimestamp(),
-          });
-        }
-      } catch (e) {
-        debugPrint('Firestore [requestRoomRegistration] notice: $e');
-      }
-    }
+  Stream<List<Room>> getRoomsStream() {
+    return collection('rooms').snapshots().map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          return Room.fromJson(
+            document.data(),
+            document.id,
+          );
+        }).toList();
+      },
+    );
   }
 
-  /// Admin duyệt hoặc xếp phòng cho sinh viên
-  Future<void> updateStudentRoomStatus(int userId, RoomStatus status, {int? roomId, String? roomName}) async {
-    final idx = _masterUsers.indexWhere((u) => u.id == userId);
-    if (idx >= 0) {
-      final user = _masterUsers[idx];
-      final oldStatus = user.roomStatus;
-      final oldRoomName = user.pendingRoomName;
-
-      user.roomStatus = status;
-      if (roomName != null && roomName.isNotEmpty) user.pendingRoomName = roomName;
-      if (roomId != null) user.roomId = roomId;
-
-      // Nếu chuyển sang approved: tăng sĩ số phòng
-      if (status == RoomStatus.approved && oldStatus != RoomStatus.approved) {
-        final targetRoomName = user.pendingRoomName ?? roomName ?? '';
-        final roomIdx = _masterRooms.indexWhere((r) => r.name.toLowerCase().contains(targetRoomName.toLowerCase()) || targetRoomName.toLowerCase().contains(r.name.toLowerCase()));
-        if (roomIdx >= 0) {
-          if (_masterRooms[roomIdx].currentOccupancy < _masterRooms[roomIdx].capacity) {
-            _masterRooms[roomIdx].currentOccupancy++;
-            _roomsController.add(List<Room>.from(_masterRooms));
-          }
-        }
-      }
-
-      // Nếu hủy hoặc từ chối phòng đã approved: giảm sĩ số
-      if (oldStatus == RoomStatus.approved && status != RoomStatus.approved && oldRoomName != null) {
-        final roomIdx = _masterRooms.indexWhere((r) => r.name.toLowerCase().contains(oldRoomName.toLowerCase()) || oldRoomName.toLowerCase().contains(r.name.toLowerCase()));
-        if (roomIdx >= 0) {
-          if (_masterRooms[roomIdx].currentOccupancy > 0) {
-            _masterRooms[roomIdx].currentOccupancy--;
-            _roomsController.add(List<Room>.from(_masterRooms));
-          }
-        }
-      }
-
-      AuthController.instance.syncCurrentUser(user);
-      _usersController.add(List<User>.from(_masterUsers));
-    }
-
-    if (usersRef != null) {
-      try {
-        final query = await usersRef!.where('id', isEqualTo: userId).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          String statusStr = 'none';
-          if (status == RoomStatus.approved) statusStr = 'approved';
-          if (status == RoomStatus.pending) statusStr = 'pending';
-          if (status == RoomStatus.rejected) statusStr = 'rejected';
-
-          final Map<String, dynamic> updateData = {
-            'room_status': statusStr,
-            'updated_at': FieldValue.serverTimestamp(),
-          };
-          if (roomId != null) updateData['room_id'] = roomId;
-          if (roomName != null) updateData['pending_room_name'] = roomName;
-
-          await query.docs.first.reference.update(updateData);
-        }
-      } catch (e) {
-        debugPrint('Firestore [updateStudentRoomStatus] notice: $e');
-      }
-    }
+  Stream<List<User>> getStudentsStream() {
+    return collection('users')
+        .where('role', isEqualTo: 'student')
+        .snapshots()
+        .map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          return User.fromJson(document.data());
+        }).toList();
+      },
+    );
   }
 
-  /// Cập nhật thông tin hồ sơ sinh viên
-  Future<void> updateUserProfile(int userId, {String? phone, String? hometown, String? className}) async {
-    final idx = _masterUsers.indexWhere((u) => u.id == userId);
-    if (idx >= 0) {
-      if (phone != null) _masterUsers[idx].phone = phone;
-      if (hometown != null) _masterUsers[idx].hometown = hometown;
-      if (className != null) _masterUsers[idx].className = className;
-      AuthController.instance.syncCurrentUser(_masterUsers[idx]);
-      _usersController.add(List<User>.from(_masterUsers));
-    }
-
-    if (usersRef != null) {
-      try {
-        final query = await usersRef!.where('id', isEqualTo: userId).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          final Map<String, dynamic> updateData = {
-            'updated_at': FieldValue.serverTimestamp(),
-          };
-          if (phone != null) updateData['phone'] = phone;
-          if (hometown != null) updateData['hometown'] = hometown;
-          if (className != null) updateData['class_name'] = className;
-
-          await query.docs.first.reference.update(updateData);
-        }
-      } catch (e) {
-        debugPrint('Firestore [updateUserProfile] notice: $e');
-      }
-    }
+  Stream<List<User>> getRoommatesStream(
+    String roomName,
+  ) {
+    return collection('users')
+        .where('room_status', isEqualTo: 'approved')
+        .where(
+          'pending_room_name',
+          isEqualTo: roomName,
+        )
+        .snapshots()
+        .map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          return User.fromJson(document.data());
+        }).toList();
+      },
+    );
   }
 
-  /// Admin xóa sinh viên khỏi hệ thống
-  Future<void> deleteUser(int userId) async {
-    final idx = _masterUsers.indexWhere((u) => u.id == userId);
-    if (idx >= 0) {
-      final user = _masterUsers[idx];
-      if (user.roomStatus == RoomStatus.approved && user.pendingRoomName != null) {
-        final roomIdx = _masterRooms.indexWhere((r) => r.name.toLowerCase().contains(user.pendingRoomName!.toLowerCase()));
-        if (roomIdx >= 0 && _masterRooms[roomIdx].currentOccupancy > 0) {
-          _masterRooms[roomIdx].currentOccupancy--;
-          _roomsController.add(List<Room>.from(_masterRooms));
-        }
-      }
-      _masterUsers.removeAt(idx);
-      _usersController.add(List<User>.from(_masterUsers));
+  Stream<List<Invoice>> getInvoicesStream({
+    String? roomName,
+  }) {
+    final auth = AuthController.instance;
+
+    if (!auth.isAdmin &&
+        auth.currentUser.roomStatus !=
+            RoomStatus.approved) {
+      return Stream.value(<Invoice>[]);
     }
 
-    if (usersRef != null) {
-      try {
-        final query = await usersRef!.where('id', isEqualTo: userId).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          await query.docs.first.reference.delete();
-        }
-      } catch (e) {
-        debugPrint('Firestore [deleteUser] notice: $e');
-      }
+    Query<Map<String, dynamic>> query =
+        collection('invoices');
+
+    if (roomName != null) {
+      query = query.where(
+        'room_name',
+        isEqualTo: roomName,
+      );
     }
+
+    return query.snapshots().map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          return Invoice.fromJson(
+            document.data(),
+            document.id,
+          );
+        }).toList();
+      },
+    );
   }
 
-  /// Xác thực đăng nhập sinh viên / admin
-  Future<User?> authenticateUser(String username, String password) async {
-    final cleanUsername = username.trim().toLowerCase();
+  Stream<List<Ticket>> getTicketsStream({
+    String? roomName,
+  }) {
+    final auth = AuthController.instance;
 
-    // 1. Kiểm tra Firestore trước
-    if (usersRef != null) {
-      try {
-        var query = await usersRef!.where('username', isEqualTo: cleanUsername).limit(1).get();
-        if (query.docs.isEmpty) {
-          query = await usersRef!.where('email', isEqualTo: cleanUsername).limit(1).get();
-        }
-
-        if (query.docs.isNotEmpty) {
-          final doc = query.docs.first;
-          final data = doc.data() as Map<String, dynamic>;
-          final storedPassword = data['password']?.toString() ?? '';
-
-          if (storedPassword == password || (storedPassword.isEmpty && password == '123456')) {
-            final user = User.fromJson(data);
-            final idx = _masterUsers.indexWhere((u) => u.username.toLowerCase() == cleanUsername);
-            if (idx >= 0) {
-              _masterUsers[idx] = user;
-            } else {
-              _masterUsers.add(user);
-            }
-            return user;
-          }
-        }
-      } catch (e) {
-        debugPrint('Firestore [authenticateUser] error: $e');
-      }
+    if (!auth.isAdmin &&
+        auth.currentUser.roomStatus !=
+            RoomStatus.approved) {
+      return Stream.value(<Ticket>[]);
     }
 
-    // 2. Tra cứu trong kho dữ liệu trung tâm
-    final user = _masterUsers.firstWhere(
-      (u) => u.username.toLowerCase() == cleanUsername || u.email.toLowerCase() == cleanUsername,
-      orElse: () => User(username: '', email: ''),
+    Query<Map<String, dynamic>> query =
+        collection('tickets');
+
+    if (roomName != null) {
+      query = query.where(
+        'room_name',
+        isEqualTo: roomName,
+      );
+    }
+
+    return query.snapshots().map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          return Ticket.fromJson(
+            document.data(),
+            document.id,
+          );
+        }).toList();
+      },
+    );
+  }
+
+  Stream<List<Announcement>>
+      getAnnouncementsStream() {
+    return collection('announcements')
+        .snapshots()
+        .map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          final data = document.data();
+
+          return Announcement(
+            id: document.id,
+            title: data['title']?.toString() ?? '',
+            content:
+                data['content']?.toString() ?? '',
+            department:
+                data['department']?.toString() ?? '',
+            date: data['date']?.toString() ?? '',
+          );
+        }).toList();
+      },
+    );
+  }
+
+  Stream<List<RoomAsset>> getRoomAssetsStream(
+    String roomName,
+  ) {
+    return collection('assets')
+        .where(
+          'room_name',
+          isEqualTo: roomName,
+        )
+        .snapshots()
+        .map(
+      (snapshot) {
+        return snapshot.docs.map((document) {
+          final data = document.data();
+
+          return RoomAsset(
+            id: document.id,
+            name: data['name']?.toString() ?? '',
+            description:
+                data['description']?.toString() ?? '',
+            quantity:
+                (data['quantity'] as num?)
+                        ?.toInt() ??
+                    0,
+            status:
+                data['status']?.toString() ?? 'used',
+          );
+        }).toList();
+      },
+    );
+  }
+
+  Future<DocumentReference<Map<String, dynamic>>>
+      _user(int userId) async {
+    final auth = AuthController.instance;
+
+    if (auth.isLoggedIn &&
+        auth.currentUser.id == userId) {
+      return collection('users').doc(
+        auth.currentUser.username,
+      );
+    }
+
+    requireAdmin();
+
+    final snapshot = await collection('users')
+        .where('id', isEqualTo: userId)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      throw StateError(
+        'Không tìm thấy sinh viên.',
+      );
+    }
+
+    return snapshot.docs.first.reference;
+  }
+
+  Future<DocumentReference<Map<String, dynamic>>>
+      _room(String label) async {
+    final snapshot = await collection('rooms')
+        .where('label', isEqualTo: label)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      throw StateError(
+        'Phòng không còn tồn tại.',
+      );
+    }
+
+    return snapshot.docs.first.reference;
+  }
+
+  Future<void> _sync(
+    DocumentReference<Map<String, dynamic>>
+        reference,
+  ) async {
+    final snapshot = await reference.get();
+    final data = snapshot.data();
+
+    if (data == null) return;
+
+    AuthController.instance.syncCurrentUser(
+      User.fromJson(data),
+    );
+  }
+
+  Future<void> requestRoomRegistration(
+    int userId,
+    String roomName,
+  ) async {
+    final auth = AuthController.instance;
+
+    if (!auth.isLoggedIn ||
+        auth.isAdmin ||
+        auth.currentUser.id != userId) {
+      throw StateError(
+        'Không có quyền đăng ký phòng.',
+      );
+    }
+
+    final userReference = collection('users').doc(
+      auth.currentUser.username,
     );
 
-    if (user.username.isNotEmpty) {
-      return user;
-    }
-    return null;
-  }
+    final roomReference = await _room(roomName);
 
-  /// Đăng ký tài khoản mới lên hệ thống & Firestore
-  Future<bool> registerUserInFirebase(User user, String password) async {
-    final cleanUsername = user.username.trim().toLowerCase();
-    final exists = _masterUsers.any((u) => u.username.toLowerCase() == cleanUsername);
-    if (exists) return false;
+    await db.runTransaction((transaction) async {
+      final userSnapshot =
+          await transaction.get(userReference);
 
-    _masterUsers.add(user);
-    _usersController.add(List<User>.from(_masterUsers));
+      final roomSnapshot =
+          await transaction.get(roomReference);
 
-    if (usersRef != null) {
-      try {
-        final docId = 'user_$cleanUsername';
-        final userData = {
-          ...user.toJson(),
-          'password': password,
-          'created_at': FieldValue.serverTimestamp(),
-          'updated_at': FieldValue.serverTimestamp(),
-        };
-        await usersRef!.doc(docId).set(userData);
-      } catch (e) {
-        debugPrint('Firestore [registerUserInFirebase] notice: $e');
+      final user = userSnapshot.data();
+      final room = roomSnapshot.data();
+
+      if (user == null || room == null) {
+        throw StateError(
+          'Không tìm thấy hồ sơ hoặc phòng.',
+        );
       }
-    }
-    return true;
+
+      final status = user['room_status'];
+
+      if (status == 'pending' ||
+          status == 'approved') {
+        throw StateError(
+          'Bạn đã đăng ký phòng. '
+          'Vui lòng chờ admin xử lý.',
+        );
+      }
+
+      final occupancy =
+          (room['current_occupancy'] as num)
+              .toInt();
+
+      final capacity =
+          (room['capacity'] as num).toInt();
+
+      if (occupancy >= capacity) {
+        throw StateError('Phòng đã đầy.');
+      }
+
+      final requests =
+          (room['active_requests'] as num?)
+                  ?.toInt() ??
+              0;
+
+      transaction.update(userReference, {
+        'room_status': 'pending',
+        'room_id': null,
+        'pending_room_name': roomName,
+        'pending_room_doc': roomReference.id,
+      });
+
+      transaction.update(roomReference, {
+        'active_requests': requests + 1,
+      });
+    });
+
+    await _sync(userReference);
   }
 
-  // =====================================================================
-  // 2. Quản lý Phòng (Rooms - CRUD)
-  // =====================================================================
-  Stream<List<Room>> getRoomsStream() async* {
-    yield List<Room>.from(_masterRooms);
-    yield* _roomsController.stream;
+  Future<void> updateStudentRoomStatus(
+    int userId,
+    RoomStatus status, {
+    int? roomId,
+    String? roomName,
+  }) async {
+    requireAdmin();
+
+    if (status == RoomStatus.pending) {
+      throw StateError(
+        'Trạng thái chờ duyệt được tạo '
+        'khi sinh viên đăng ký.',
+      );
+    }
+
+    final userReference = await _user(userId);
+
+    final targetReference =
+        roomName != null && roomName.isNotEmpty
+            ? await _room(roomName)
+            : null;
+
+    await db.runTransaction((transaction) async {
+      final userSnapshot =
+          await transaction.get(userReference);
+
+      final user = userSnapshot.data();
+
+      if (user == null ||
+          user['role'] != 'student') {
+        throw StateError(
+          'Không tìm thấy sinh viên hợp lệ.',
+        );
+      }
+
+      final oldRoomId =
+          user['pending_room_doc'] as String?;
+
+      final oldRoomReference =
+          oldRoomId == null
+              ? null
+              : collection('rooms').doc(oldRoomId);
+
+      final newRoomReference =
+          targetReference ?? oldRoomReference;
+
+      final oldRoom =
+          oldRoomReference == null
+              ? null
+              : (await transaction.get(
+                  oldRoomReference,
+                ))
+                  .data();
+
+      final newRoom =
+          newRoomReference == null
+              ? null
+              : (await transaction.get(
+                  newRoomReference,
+                ))
+                  .data();
+
+      final oldStatus = user['room_status'];
+
+      if (status == RoomStatus.approved) {
+        if (newRoom == null ||
+            newRoomReference == null) {
+          throw StateError(
+            'Chưa chọn phòng hợp lệ.',
+          );
+        }
+
+        if (oldStatus == 'approved' &&
+            oldRoomReference?.id ==
+                newRoomReference.id) {
+          return;
+        }
+
+        final occupancy =
+            (newRoom['current_occupancy'] as num)
+                .toInt();
+
+        final capacity =
+            (newRoom['capacity'] as num).toInt();
+
+        if (occupancy >= capacity) {
+          throw StateError(
+            'Phòng đã đầy, không thể duyệt thêm.',
+          );
+        }
+      }
+
+      if (oldRoom != null &&
+          oldRoomReference != null) {
+        if (oldStatus == 'pending') {
+          final requests =
+              (oldRoom['active_requests'] as num?)
+                      ?.toInt() ??
+                  0;
+
+          if (requests < 1) {
+            throw StateError(
+              'Số đơn chờ của phòng không hợp lệ.',
+            );
+          }
+
+          transaction.update(
+            oldRoomReference,
+            {
+              'active_requests': requests - 1,
+            },
+          );
+        }
+
+        if (oldStatus == 'approved') {
+          final occupancy =
+              (oldRoom['current_occupancy'] as num)
+                  .toInt();
+
+          if (occupancy < 1) {
+            throw StateError(
+              'Sĩ số phòng không hợp lệ.',
+            );
+          }
+
+          transaction.update(
+            oldRoomReference,
+            {
+              'current_occupancy': occupancy - 1,
+            },
+          );
+        }
+      }
+
+      if (status == RoomStatus.approved) {
+        final occupancy =
+            (newRoom!['current_occupancy'] as num)
+                .toInt();
+
+        transaction.update(
+          newRoomReference!,
+          {
+            'current_occupancy': occupancy + 1,
+          },
+        );
+      }
+
+      transaction.update(userReference, {
+        'room_status': status.name,
+        'room_id':
+            status == RoomStatus.approved
+                ? (roomId ?? 1)
+                : null,
+        'pending_room_doc':
+            status == RoomStatus.approved
+                ? newRoomReference!.id
+                : null,
+        'pending_room_name':
+            status == RoomStatus.approved
+                ? newRoom!['label']
+                : null,
+      });
+    });
+
+    await _sync(userReference);
+  }
+
+  Future<void> updateUserProfile(
+    int userId, {
+    String? phone,
+    String? hometown,
+    String? className,
+  }) async {
+    final reference = await _user(userId);
+
+    await reference.update({
+      if (phone != null) 'phone': phone.trim(),
+      if (hometown != null)
+        'hometown': hometown.trim(),
+      if (className != null)
+        'class_name': className.trim(),
+    });
+
+    await _sync(reference);
+  }
+
+  Future<void> deleteUser(int userId) async {
+    requireAdmin();
+
+    final userReference = await _user(userId);
+
+    // Xóa hồ sơ và giải phóng phòng trong cùng transaction.
+    await db.runTransaction((transaction) async {
+      final snapshot =
+          await transaction.get(userReference);
+
+      final user = snapshot.data();
+
+      if (user == null) return;
+
+      if (user['role'] != 'student') {
+        throw StateError(
+          'Chỉ được xóa hồ sơ sinh viên.',
+        );
+      }
+
+      final roomId =
+          user['pending_room_doc'] as String?;
+
+      final roomReference =
+          roomId == null
+              ? null
+              : collection('rooms').doc(roomId);
+
+      final room =
+          roomReference == null
+              ? null
+              : (await transaction.get(
+                  roomReference,
+                ))
+                  .data();
+
+      if (room != null &&
+          roomReference != null) {
+        if (user['room_status'] == 'pending') {
+          final requests =
+              (room['active_requests'] as num?)
+                      ?.toInt() ??
+                  0;
+
+          if (requests < 1) {
+            throw StateError(
+              'Số đơn chờ của phòng không hợp lệ.',
+            );
+          }
+
+          transaction.update(roomReference, {
+            'active_requests': requests - 1,
+          });
+        }
+
+        if (user['room_status'] == 'approved') {
+          final occupancy =
+              (room['current_occupancy'] as num)
+                  .toInt();
+
+          if (occupancy < 1) {
+            throw StateError(
+              'Sĩ số phòng không hợp lệ.',
+            );
+          }
+
+          transaction.update(roomReference, {
+            'current_occupancy': occupancy - 1,
+          });
+        }
+      }
+
+      transaction.delete(userReference);
+    });
+  }
+
+  Map<String, dynamic> _roomData(Room room) {
+    return {
+      'building_id': room.buildingId.trim(),
+      'room_name': room.name.trim(),
+      'label': roomLabel(room),
+      'capacity': room.capacity,
+      'type': room.roomType.trim(),
+      'fixed_rent': room.fixedPrice,
+    };
+  }
+
+  void _validateRoom(Room room) {
+    if (room.name.trim().isEmpty ||
+        room.buildingId.trim().isEmpty) {
+      throw StateError(
+        'Vui lòng nhập tên phòng và tòa nhà.',
+      );
+    }
+
+    if (room.capacity < 1) {
+      throw StateError(
+        'Sức chứa phải lớn hơn 0.',
+      );
+    }
+
+    if (!room.fixedPrice.isFinite ||
+        room.fixedPrice < 0) {
+      throw StateError(
+        'Giá phòng không hợp lệ.',
+      );
+    }
   }
 
   Future<void> addRoom(Room room) async {
-    _masterRooms.add(room);
-    _roomsController.add(List<Room>.from(_masterRooms));
+    requireAdmin();
+    _validateRoom(room);
 
-    if (roomsRef != null) {
-      try {
-        final docId = 'room_${room.buildingId}_${room.name}'.replaceAll(' ', '_');
-        await roomsRef!.doc(docId).set({
-          'building_id': room.buildingId,
-          'room_name': room.name,
-          'capacity': room.capacity,
-          'current_occupancy': room.currentOccupancy,
-          'type': room.roomType,
-          'fixed_rent': room.fixedPrice,
-          'created_at': FieldValue.serverTimestamp(),
-          'updated_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [addRoom] notice: $e');
+    room.name = room.name.trim();
+    room.buildingId = room.buildingId.trim();
+
+    final documentId = Uri.encodeComponent(
+      '${room.buildingId}_${room.name}',
+    );
+
+    final reference =
+        collection('rooms').doc(documentId);
+
+    await db.runTransaction((transaction) async {
+      final snapshot =
+          await transaction.get(reference);
+
+      if (snapshot.exists) {
+        throw StateError('Phòng đã tồn tại.');
       }
-    }
+
+      transaction.set(reference, {
+        ..._roomData(room),
+        'current_occupancy': 0,
+        'active_requests': 0,
+      });
+    });
   }
 
-  Future<void> updateRoom(String docId, Room room) async {
-    final idx = _masterRooms.indexWhere((r) => r.id == docId || r.name == room.name);
-    if (idx >= 0) {
-      _masterRooms[idx] = room;
-      _roomsController.add(List<Room>.from(_masterRooms));
-    }
+  Future<void> updateRoom(
+    String documentId,
+    Room room,
+  ) async {
+    requireAdmin();
+    _validateRoom(room);
 
-    if (roomsRef != null) {
-      try {
-        await roomsRef!.doc(docId).update({
-          'building_id': room.buildingId,
-          'room_name': room.name,
-          'capacity': room.capacity,
-          'type': room.roomType,
-          'fixed_rent': room.fixedPrice,
-          'updated_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [updateRoom] notice: $e');
+    room.name = room.name.trim();
+    room.buildingId = room.buildingId.trim();
+
+    final reference =
+        collection('rooms').doc(documentId);
+
+    await db.runTransaction((transaction) async {
+      final old =
+          (await transaction.get(reference)).data();
+
+      if (old == null) {
+        throw StateError(
+          'Phòng không còn tồn tại.',
+        );
       }
-    }
-  }
 
-  Future<void> deleteRoom(String docId) async {
-    _masterRooms.removeWhere((r) => r.id == docId || r.name == docId);
-    _roomsController.add(List<Room>.from(_masterRooms));
+      final occupancy =
+          (old['current_occupancy'] as num)
+              .toInt();
 
-    if (roomsRef != null) {
-      try {
-        await roomsRef!.doc(docId).delete();
-      } catch (e) {
-        debugPrint('Firestore [deleteRoom] notice: $e');
+      final requests =
+          (old['active_requests'] as num?)
+                  ?.toInt() ??
+              0;
+
+      if (room.capacity < occupancy) {
+        throw StateError(
+          'Sức chứa không được nhỏ hơn '
+          'số sinh viên đang ở.',
+        );
       }
-    }
-  }
 
-  Future<void> updateRoomOccupancy(String roomName, int currentOccupancy) async {
-    final idx = _masterRooms.indexWhere((r) => r.name.toLowerCase() == roomName.toLowerCase());
-    if (idx >= 0) {
-      _masterRooms[idx].currentOccupancy = currentOccupancy;
-      _roomsController.add(List<Room>.from(_masterRooms));
-    }
-
-    if (roomsRef != null) {
-      try {
-        final query = await roomsRef!.where('room_name', isEqualTo: roomName).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          await query.docs.first.reference.update({
-            'current_occupancy': currentOccupancy,
-            'updated_at': FieldValue.serverTimestamp(),
-          });
-        }
-      } catch (e) {
-        debugPrint('Firestore [updateRoomOccupancy] notice: $e');
+      if ((occupancy > 0 || requests > 0) &&
+          old['label'] != roomLabel(room)) {
+        throw StateError(
+          'Không đổi tên hoặc tòa nhà khi phòng '
+          'có sinh viên hay đơn chờ duyệt.',
+        );
       }
-    }
-  }
 
-  // =====================================================================
-  // 3. Quản lý Bạn cùng phòng & Thiết bị phòng (Roommates & Assets)
-  // =====================================================================
-  /// Lắng nghe danh sách sinh viên nội trú cùng phòng (Roommates)
-  Stream<List<User>> getRoommatesStream(String roomName) async* {
-    List<User> filter(List<User> list) {
-      final clean = roomName.trim().toLowerCase();
-      return list.where((u) =>
-        u.roomStatus == RoomStatus.approved &&
-        u.pendingRoomName != null &&
-        (u.pendingRoomName!.toLowerCase().contains(clean) || clean.contains(u.pendingRoomName!.toLowerCase()))
-      ).toList();
-    }
-    yield filter(List<User>.from(_masterUsers));
-    yield* _usersController.stream.map(filter);
-  }
-
-  Stream<List<RoomAsset>> getRoomAssetsStream(String roomName) async* {
-    yield List<RoomAsset>.from(_masterAssets);
-  }
-
-  Stream<List<Announcement>> getAnnouncementsStream() async* {
-    yield List<Announcement>.from(_masterAnnouncements);
-    yield* _announcementsController.stream;
-  }
-
-  // =====================================================================
-  // 4. Quản lý Hóa đơn & Điện Nước (Invoices - CRUD)
-  // =====================================================================
-  Stream<List<Invoice>> getInvoicesStream({String? roomName}) async* {
-    List<Invoice> filter(List<Invoice> list) {
-      if (roomName == null || roomName.trim().isEmpty) return list;
-      final clean = roomName.trim().toLowerCase();
-      return list.where((i) => i.roomName.toLowerCase().contains(clean) || clean.contains(i.roomName.toLowerCase())).toList();
-    }
-
-    yield filter(List<Invoice>.from(_masterInvoices));
-    yield* _invoicesController.stream.map(filter);
-  }
-
-  Future<void> createInvoice(Invoice invoice) async {
-    _masterInvoices.insert(0, invoice);
-    _invoicesController.add(List<Invoice>.from(_masterInvoices));
-
-    if (invoicesRef != null) {
-      try {
-        final docId = 'inv_${invoice.roomName}_${invoice.month}_${invoice.year}'.replaceAll(' ', '_');
-        await invoicesRef!.doc(docId).set({
-          ...invoice.toJson(),
-          'created_at': FieldValue.serverTimestamp(),
-          'updated_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [createInvoice] notice: $e');
-      }
-    }
-  }
-
-  Future<void> updateInvoiceStatus(String invoiceId, String status) async {
-    final idx = _masterInvoices.indexWhere((i) => i.id == invoiceId);
-    if (idx >= 0) {
-      _masterInvoices[idx] = Invoice(
-        id: _masterInvoices[idx].id,
-        roomName: _masterInvoices[idx].roomName,
-        month: _masterInvoices[idx].month,
-        year: _masterInvoices[idx].year,
-        roomFee: _masterInvoices[idx].roomFee,
-        electricityFee: _masterInvoices[idx].electricityFee,
-        waterFee: _masterInvoices[idx].waterFee,
-        totalAmount: _masterInvoices[idx].totalAmount,
-        status: status,
-        orderCode: _masterInvoices[idx].orderCode,
+      transaction.update(
+        reference,
+        _roomData(room),
       );
-      _invoicesController.add(List<Invoice>.from(_masterInvoices));
-    }
+    });
+  }
 
-    if (invoicesRef != null) {
-      try {
-        await invoicesRef!.doc(invoiceId).update({
-          'status': status,
-          'updated_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [updateInvoiceStatus] notice: $e');
+  Future<void> deleteRoom(
+    String documentId,
+  ) async {
+    requireAdmin();
+
+    final reference =
+        collection('rooms').doc(documentId);
+
+    await db.runTransaction((transaction) async {
+      final room =
+          (await transaction.get(reference)).data();
+
+      if (room == null) return;
+
+      final occupancy =
+          (room['current_occupancy'] as num)
+              .toInt();
+
+      final requests =
+          (room['active_requests'] as num?)
+                  ?.toInt() ??
+              0;
+
+      if (occupancy > 0 || requests > 0) {
+        throw StateError(
+          'Không thể xóa phòng đang có sinh viên '
+          'hoặc đơn chờ duyệt.',
+        );
       }
-    }
+
+      transaction.delete(reference);
+    });
   }
 
-  Future<void> deleteInvoice(String invoiceId) async {
-    _masterInvoices.removeWhere((i) => i.id == invoiceId);
-    _invoicesController.add(List<Invoice>.from(_masterInvoices));
-
-    if (invoicesRef != null) {
-      try {
-        await invoicesRef!.doc(invoiceId).delete();
-      } catch (e) {
-        debugPrint('Firestore [deleteInvoice] notice: $e');
-      }
-    }
+  Future<void> updateRoomOccupancy(
+    String roomName,
+    int occupancy,
+  ) async {
+    throw StateError(
+      'Sĩ số được cập nhật tự động '
+      'khi duyệt hoặc trả phòng.',
+    );
   }
 
-  // =====================================================================
-  // 5. Quản lý Báo cáo sự cố thiết bị (Tickets - CRUD)
-  // =====================================================================
-  Stream<List<Ticket>> getTicketsStream({String? roomName}) async* {
-    List<Ticket> filter(List<Ticket> list) {
-      if (roomName == null || roomName.trim().isEmpty) return list;
-      final clean = roomName.trim().toLowerCase();
-      return list.where((t) => t.roomName.toLowerCase().contains(clean) || clean.contains(t.roomName.toLowerCase())).toList();
-    }
+  Future<void> createInvoice(
+    Invoice invoice,
+  ) async {
+    requireAdmin();
 
-    yield filter(List<Ticket>.from(_masterTickets));
-    yield* _ticketsController.stream.map(filter);
-  }
+    final amounts = [
+      invoice.roomFee,
+      invoice.electricityFee,
+      invoice.waterFee,
+    ];
 
-  Future<void> createTicket(Ticket ticket) async {
-    _masterTickets.insert(0, ticket);
-    _ticketsController.add(List<Ticket>.from(_masterTickets));
-
-    if (ticketsRef != null) {
-      try {
-        await ticketsRef!.add({
-          ...ticket.toJson(),
-          'created_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [createTicket] notice: $e');
-      }
-    }
-  }
-
-  Future<void> updateTicketStatus(String ticketId, String status) async {
-    final idx = _masterTickets.indexWhere((t) => t.id == ticketId);
-    if (idx >= 0) {
-      _masterTickets[idx] = Ticket(
-        id: _masterTickets[idx].id,
-        roomName: _masterTickets[idx].roomName,
-        studentName: _masterTickets[idx].studentName,
-        title: _masterTickets[idx].title,
-        description: _masterTickets[idx].description,
-        urgency: _masterTickets[idx].urgency,
-        status: status,
-        date: _masterTickets[idx].date,
+    if (amounts.any(
+      (value) => !value.isFinite || value < 0,
+    )) {
+      throw StateError(
+        'Số tiền không hợp lệ.',
       );
-      _ticketsController.add(List<Ticket>.from(_masterTickets));
     }
 
-    if (ticketsRef != null) {
-      try {
-        await ticketsRef!.doc(ticketId).update({
-          'status': status,
-          'updated_at': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Firestore [updateTicketStatus] notice: $e');
-      }
+    if (invoice.month < 1 ||
+        invoice.month > 12 ||
+        invoice.year < 1) {
+      throw StateError(
+        'Kỳ hóa đơn không hợp lệ.',
+      );
     }
+
+    final reference =
+        collection('invoices').doc(invoice.id);
+
+    await db.runTransaction((transaction) async {
+      final snapshot =
+          await transaction.get(reference);
+
+      if (snapshot.exists) {
+        throw StateError(
+          'Hóa đơn đã tồn tại.',
+        );
+      }
+
+      transaction.set(
+        reference,
+        invoice.toJson(),
+      );
+    });
   }
 
-  Future<void> deleteTicket(String ticketId) async {
-    _masterTickets.removeWhere((t) => t.id == ticketId);
-    _ticketsController.add(List<Ticket>.from(_masterTickets));
+  Future<void> updateInvoiceStatus(
+    String invoiceId,
+    String status,
+  ) async {
+    requireAdmin();
 
-    if (ticketsRef != null) {
-      try {
-        await ticketsRef!.doc(ticketId).delete();
-      } catch (e) {
-        debugPrint('Firestore [deleteTicket] notice: $e');
-      }
+    if (!['paid', 'unpaid'].contains(status)) {
+      throw StateError(
+        'Trạng thái hóa đơn không hợp lệ.',
+      );
     }
+
+    await collection('invoices')
+        .doc(invoiceId)
+        .update({
+      'status': status,
+    });
   }
 
-  // Khởi tạo và đồng bộ toàn bộ dữ liệu mẫu lên Firestore khi database còn trống
-  Future<void> seedDefaultUsersIfEmpty() async {
-    if (!isFirebaseAvailable || _db == null) return;
-    try {
-      // 1. Kiểm tra và nạp danh sách tài khoản người dùng
-      final userSnap = await usersRef?.limit(1).get();
-      if (userSnap == null || userSnap.docs.isEmpty) {
-        for (var u in _masterUsers) {
-          final password = (u.role == UserRole.admin) ? 'admin123' : '123456';
-          await usersRef?.doc('user_${u.username.toLowerCase()}').set({
-            ...u.toJson(),
-            'password': password,
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
+  Future<void> deleteInvoice(
+    String invoiceId,
+  ) async {
+    requireAdmin();
 
-      // 2. Kiểm tra và nạp danh sách phòng KTX
-      final roomSnap = await roomsRef?.limit(1).get();
-      if (roomSnap == null || roomSnap.docs.isEmpty) {
-        for (var r in _masterRooms) {
-          final docId = 'room_${r.buildingId}_${r.name}'.replaceAll(' ', '_');
-          await roomsRef?.doc(docId).set({
-            'building_id': r.buildingId,
-            'room_name': r.name,
-            'capacity': r.capacity,
-            'current_occupancy': r.currentOccupancy,
-            'type': r.roomType,
-            'fixed_rent': r.fixedPrice,
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
+    await collection('invoices')
+        .doc(invoiceId)
+        .delete();
+  }
 
-      // 3. Kiểm tra và nạp danh sách hóa đơn
-      final invSnap = await invoicesRef?.limit(1).get();
-      if (invSnap == null || invSnap.docs.isEmpty) {
-        for (var inv in _masterInvoices) {
-          await invoicesRef?.doc(inv.id).set({
-            ...inv.toJson(),
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
+  Future<void> createTicket(
+    Ticket ticket,
+  ) async {
+    final auth = AuthController.instance;
 
-      // 4. Kiểm tra và nạp danh sách báo cáo sự cố
-      final ticketSnap = await ticketsRef?.limit(1).get();
-      if (ticketSnap == null || ticketSnap.docs.isEmpty) {
-        for (var t in _masterTickets) {
-          await ticketsRef?.doc(t.id).set({
-            ...t.toJson(),
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
-
-      // 5. Kiểm tra và nạp bảng tin thông báo
-      final annSnap = await announcementsRef?.limit(1).get();
-      if (annSnap == null || annSnap.docs.isEmpty) {
-        for (var a in _masterAnnouncements) {
-          await announcementsRef?.doc(a.id).set({
-            'title': a.title,
-            'content': a.content,
-            'department': a.department,
-            'date': a.date,
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-      }
-      debugPrint('Firestore seed completed successfully!');
-    } catch (e) {
-      debugPrint('Firestore seed error: $e');
+    if (!auth.isLoggedIn) {
+      throw StateError(
+        'Vui lòng đăng nhập.',
+      );
     }
+
+    if (!auth.isAdmin &&
+        (auth.currentUser.roomStatus !=
+                RoomStatus.approved ||
+            ticket.roomName !=
+                auth.currentUser.pendingRoomName)) {
+      throw StateError(
+        'Bạn chưa được duyệt cư trú '
+        'tại phòng này.',
+      );
+    }
+
+    if (ticket.title.trim().isEmpty ||
+        ticket.description.trim().isEmpty) {
+      throw StateError(
+        'Vui lòng nhập nội dung báo cáo.',
+      );
+    }
+
+    await collection('tickets')
+        .doc(ticket.id)
+        .set({
+      ...ticket.toJson(),
+      'owner_username':
+          auth.currentUser.username,
+    });
+  }
+
+  Future<void> updateTicketStatus(
+    String ticketId,
+    String status,
+  ) async {
+    requireAdmin();
+
+    if (![
+      'pending',
+      'processing',
+      'completed',
+    ].contains(status)) {
+      throw StateError(
+        'Trạng thái sự cố không hợp lệ.',
+      );
+    }
+
+    await collection('tickets')
+        .doc(ticketId)
+        .update({
+      'status': status,
+    });
+  }
+
+  Future<void> deleteTicket(
+    String ticketId,
+  ) async {
+    requireAdmin();
+
+    await collection('tickets')
+        .doc(ticketId)
+        .delete();
   }
 }

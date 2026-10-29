@@ -1,46 +1,47 @@
-
 import 'base_entity.dart';
 
-// Phân quyền người dùng
 enum UserRole {
   student,
-  admin
+  admin,
 }
 
-// Trạng thái đăng ký phòng
 enum RoomStatus {
   none,
   pending,
   approved,
-  rejected
+  rejected,
 }
 
-// Generic Entity: User kế thừa BaseEntity<int?>
 class User extends BaseEntity<int?> {
-
-  // Các thuộc tính riêng của User
   final String username;
+
+  // Giữ thuộc tính để tương thích mã cũ.
+  // Không ghi mật khẩu vào Firestore.
   String? password;
+
   String email;
   UserRole role;
+
   String? fullName;
   String? mssv;
   String? phone;
   String? className;
   String? hometown;
   String? cccd;
+
   String gender;
+
   int? roomId;
   RoomStatus roomStatus;
+
   int? pendingRoomId;
   String? pendingRoomName;
 
-  // Constructor
   User({
     int? id,
     required this.username,
-    this.password,
     required this.email,
+    this.password,
     this.role = UserRole.student,
     this.fullName,
     this.mssv,
@@ -55,63 +56,40 @@ class User extends BaseEntity<int?> {
     this.pendingRoomName,
   }) : super(
           id: id,
-          name: fullName ?? username,
+          name: fullName?.trim().isNotEmpty == true
+              ? fullName!.trim()
+              : username,
           description: 'Người dùng ký túc xá',
         );
 
-  // Chuyển dữ liệu JSON từ Backend thành User
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] == null
-          ? null
-          : int.tryParse(json['id'].toString()),
-
-      username: json['username'] as String? ?? '',
-
-      email: json['email'] as String? ?? '',
-
+      id: _parseInt(json['id']),
+      username: json['username']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
       role: json['role'] == 'admin'
           ? UserRole.admin
           : UserRole.student,
-
-      fullName: json['full_name'] as String?,
-      mssv: json['mssv'] as String?,
-      phone: json['phone'] as String?,
-      className: json['class_name'] as String?,
-      hometown: json['hometown'] as String?,
-      cccd: json['cccd'] as String?,
-
-      gender: json['gender'] as String? ?? 'Nam',
-
-      roomId: json['room_id'] == null
-          ? null
-          : int.tryParse(json['room_id'].toString()),
-
+      fullName: json['full_name']?.toString(),
+      mssv: json['mssv']?.toString(),
+      phone: json['phone']?.toString(),
+      className: json['class_name']?.toString(),
+      hometown: json['hometown']?.toString(),
+      cccd: json['cccd']?.toString(),
+      gender: json['gender']?.toString() ?? 'Nam',
+      roomId: _parseInt(json['room_id']),
       roomStatus: parseRoomStatus(json['room_status']),
-
-      pendingRoomId: json['pending_room_id'] == null
-          ? null
-          : int.tryParse(json['pending_room_id'].toString()),
-
-      pendingRoomName: json['pending_room_name'] as String?,
+      pendingRoomId: _parseInt(json['pending_room_id']),
+      pendingRoomName: json['pending_room_name']?.toString(),
     );
   }
 
-  // Chuyển User thành JSON để gửi lên Backend
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
-
       'username': username,
-
-      if (password != null && password!.isNotEmpty)
-        'password': password,
-
       'email': email,
-
-      // Sửa lỗi enum.name trên Dart cũ
-      'role': role.toString().split('.').last,
-
+      'role': role.name,
       'full_name': fullName,
       'mssv': mssv,
       'phone': phone,
@@ -120,23 +98,27 @@ class User extends BaseEntity<int?> {
       'cccd': cccd,
       'gender': gender,
       'room_id': roomId,
-
-      // Sửa lỗi enum.name trên Dart cũ
-      'room_status': roomStatus.toString().split('.').last,
-
-      if (pendingRoomId != null)
-        'pending_room_id': pendingRoomId,
+      'room_status': roomStatus.name,
+      'pending_room_id': pendingRoomId,
+      'pending_room_name': pendingRoomName,
     };
   }
 
-  // Chuyển String thành RoomStatus
-  static RoomStatus parseRoomStatus(dynamic status) {
-    switch (status) {
-      case 'approved':
-        return RoomStatus.approved;
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
 
+    return int.tryParse(value.toString());
+  }
+
+  static RoomStatus parseRoomStatus(dynamic value) {
+    switch (value?.toString()) {
       case 'pending':
         return RoomStatus.pending;
+
+      case 'approved':
+        return RoomStatus.approved;
 
       case 'rejected':
         return RoomStatus.rejected;
@@ -146,61 +128,68 @@ class User extends BaseEntity<int?> {
     }
   }
 
-  // Kiểm tra quyền quản trị viên
-  bool get isAdmin {
-    return role == UserRole.admin;
-  }
+  bool get isAdmin => role == UserRole.admin;
 
-  // Kiểm tra sinh viên đã có phòng hay chưa
   bool get hasActiveRoom {
     return roomStatus == RoomStatus.approved &&
-        roomId != null;
+        pendingRoomName?.trim().isNotEmpty == true;
   }
 
-  // Ghi đè phương thức kế thừa từ Generic BaseEntity
-  @override
-  String getInfo() {
-    return '${super.getInfo()}\n'
-        'Username: $username\n'
-        'MSSV: ${mssv ?? "Chưa có"}\n'
-        'Email: $email\n'
-        'Lớp: ${className ?? "Chưa có"}\n'
-        'Số điện thoại: ${phone ?? "Chưa có"}\n'
-        'Giới tính: $gender\n'
-        'Quê quán: ${hometown ?? "Chưa có"}\n'
-        'Vai trò: ${isAdmin ? "Quản trị viên" : "Sinh viên"}\n'
-        'Trạng thái phòng: ${getRoomStatus()}';
+  bool get hasPendingRoom {
+    return roomStatus == RoomStatus.pending;
   }
 
-  // Lấy trạng thái phòng bằng tiếng Việt
+  bool get canRegisterRoom {
+    return role == UserRole.student &&
+        (roomStatus == RoomStatus.none ||
+            roomStatus == RoomStatus.rejected);
+  }
+
+  String get displayName {
+    final value = fullName?.trim() ?? '';
+    return value.isNotEmpty ? value : username;
+  }
+
   String getRoomStatus() {
     switch (roomStatus) {
-      case RoomStatus.approved:
-        return 'Đã có phòng';
-
       case RoomStatus.pending:
         return 'Đang chờ duyệt';
+
+      case RoomStatus.approved:
+        return 'Đã có phòng';
 
       case RoomStatus.rejected:
         return 'Bị từ chối';
 
-      default:
+      case RoomStatus.none:
         return 'Chưa đăng ký phòng';
     }
   }
 
-  // Cập nhật họ tên
-  void updateFullName(String newName) {
-    fullName = newName;
-    name = newName;
+  @override
+  String getInfo() {
+    return '${super.getInfo()}\n'
+        'Tên đăng nhập: $username\n'
+        'Họ tên: $displayName\n'
+        'MSSV: ${mssv ?? "Chưa cập nhật"}\n'
+        'Email: $email\n'
+        'Lớp: ${className ?? "Chưa cập nhật"}\n'
+        'Điện thoại: ${phone ?? "Chưa cập nhật"}\n'
+        'Giới tính: $gender\n'
+        'Quê quán: ${hometown ?? "Chưa cập nhật"}\n'
+        'Vai trò: ${isAdmin ? "Quản trị viên" : "Sinh viên"}\n'
+        'Trạng thái phòng: ${getRoomStatus()}';
   }
 
-  // Cập nhật mô tả bằng phương thức kế thừa
+  void updateFullName(String newName) {
+    fullName = newName.trim();
+    name = fullName!.isEmpty ? username : fullName!;
+  }
+
   void updateUserDescription(String newDescription) {
     updateDescription(newDescription);
   }
 
-  // Sử dụng Generic Method từ BaseEntity
   void showUserData<T>(T data) {
     displayData<T>(data);
   }

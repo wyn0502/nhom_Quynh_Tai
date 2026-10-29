@@ -4,8 +4,8 @@ class Ticket {
   final String studentName;
   final String title;
   final String description;
-  final String urgency; // 'low', 'medium', 'high'
-  final String status; // 'pending', 'processing', 'completed'
+  final String urgency;
+  final String status;
   final String date;
 
   Ticket({
@@ -19,16 +19,19 @@ class Ticket {
     required this.date,
   });
 
-  factory Ticket.fromJson(Map<String, dynamic> json, [String? id]) {
+  factory Ticket.fromJson(
+    Map<String, dynamic> json, [
+    String? id,
+  ]) {
     return Ticket(
       id: id ?? json['id']?.toString() ?? '',
-      roomName: json['room_name']?.toString() ?? 'Phòng B101',
-      studentName: json['student_name']?.toString() ?? 'Sinh viên',
-      title: json['title']?.toString() ?? 'Sự cố thiết bị',
+      roomName: json['room_name']?.toString() ?? '',
+      studentName: json['student_name']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       urgency: json['urgency']?.toString() ?? 'medium',
       status: json['status']?.toString() ?? 'pending',
-      date: json['date']?.toString() ?? '25/06/2026',
+      date: json['date']?.toString() ?? '',
     );
   }
 

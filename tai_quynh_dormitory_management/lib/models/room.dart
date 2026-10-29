@@ -1,55 +1,66 @@
 class Room {
   String? id;
-  String buildingId;       
-  String name;             
-  int capacity;            
-  int currentOccupancy;    
-  String roomType;         
-  double fixedPrice;       
+  String buildingId;
+  String name;
+
+  int capacity;
+  int currentOccupancy;
+
+  String roomType;
+  double fixedPrice;
 
   Room({
     this.id,
     required this.buildingId,
     required this.name,
     required this.capacity,
-    this.currentOccupancy = 0, 
+    this.currentOccupancy = 0,
     required this.roomType,
     required this.fixedPrice,
   });
 
-  int get availableBeds => (capacity - currentOccupancy).clamp(0, capacity);
+  String get label => 'Phòng $name - $buildingId';
+
+  int get availableBeds {
+    if (capacity <= 0) return 0;
+
+    return (capacity - currentOccupancy)
+        .clamp(0, capacity)
+        .toInt();
+  }
 
   bool hasAvailableBeds() {
-    return currentOccupancy < capacity;
+    return capacity > 0 && currentOccupancy < capacity;
   }
 
   bool addOccupant() {
-    if (hasAvailableBeds()) {
-      currentOccupancy++;
-      return true; 
-    } else {
-      return false; 
-    }
+    if (!hasAvailableBeds()) return false;
+
+    currentOccupancy++;
+    return true;
   }
 
   bool removeOccupant() {
-    if (currentOccupancy > 0) {
-      currentOccupancy--;
-      return true; 
-    } else {
-      return false; 
-    }
+    if (currentOccupancy <= 0) return false;
+
+    currentOccupancy--;
+    return true;
   }
 
-  factory Room.fromJson(Map<String, dynamic> json, [String? docId]) {
+  factory Room.fromJson(
+    Map<String, dynamic> json, [
+    String? docId,
+  ]) {
     return Room(
       id: docId ?? json['id']?.toString(),
-      buildingId: json['building_id']?.toString() ?? 'Tòa A',
-      name: json['room_name']?.toString() ?? docId ?? '',
-      capacity: (json['capacity'] as num?)?.toInt() ?? 4,
-      currentOccupancy: (json['current_occupancy'] as num?)?.toInt() ?? 0,
-      roomType: json['type']?.toString() ?? 'Thường',
-      fixedPrice: (json['fixed_rent'] as num?)?.toDouble() ?? 1500000,
+      buildingId: json['building_id']?.toString() ?? '',
+      name: json['room_name']?.toString() ?? '',
+      capacity: (json['capacity'] as num?)?.toInt() ?? 0,
+      currentOccupancy:
+          (json['current_occupancy'] as num?)?.toInt() ?? 0,
+      roomType: json['type']?.toString() ?? '',
+      fixedPrice:
+          (json['fixed_rent'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -57,6 +68,7 @@ class Room {
     return {
       'building_id': buildingId,
       'room_name': name,
+      'label': label,
       'capacity': capacity,
       'current_occupancy': currentOccupancy,
       'type': roomType,
