@@ -1,1 +1,52 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"ltmobile-89b11","appId":"1:948953996399:android:04114b8af03942891b019a","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"ltmobile-89b11","configurations":{"android":"1:948953996399:android:04114b8af03942891b019a","ios":"1:948953996399:ios:dbc6f753449350831b019a","web":"1:948953996399:web:c691115e4a0c41001b019a"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "ltmobile-89b11",
+          "appId": "1:948953996399:android:04114b8af03942891b019a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "ltmobile-89b11",
+          "configurations": {
+            "android": "1:948953996399:android:04114b8af03942891b019a",
+            "ios": "1:948953996399:ios:dbc6f753449350831b019a",
+            "web": "1:948953996399:web:c691115e4a0c41001b019a"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "discipline",
+      "runtime": "nodejs22"
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "storage": {
+      "port": 9199
+    },
+    "functions": {
+      "port": 5001
+    },
+    "singleProjectMode": true
+  }
+}

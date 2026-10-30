@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/auth_controller.dart';
 import '../models/user.dart';
+import '../models/dormitory_rules.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 
@@ -211,13 +212,7 @@ class _UserScreenState extends State<UserScreen> {
           icon: Icons.rule,
           color: AppUi.orange,
           children: const [
-            Text(
-              '1. Giữ gìn trật tự và vệ sinh chung.\n\n'
-              '2. Bảo quản thiết bị được bàn giao.\n\n'
-              '3. Không tự ý chuyển hoặc đổi phòng.\n\n'
-              '4. Thanh toán các khoản phí theo thông báo '
-              'của ban quản lý.',
-            ),
+            Text(DormitoryRules.text),
           ],
         ),
       ],
@@ -312,9 +307,7 @@ class _UserScreenState extends State<UserScreen> {
         final visible = students.where((user) {
           final matchesSearch =
               user.displayName.toLowerCase().contains(keyword) ||
-                  (user.mssv ?? '')
-                      .toLowerCase()
-                      .contains(keyword) ||
+                  (user.mssv ?? '').toLowerCase().contains(keyword) ||
                   user.username.toLowerCase().contains(keyword);
 
           final matchesStatus =

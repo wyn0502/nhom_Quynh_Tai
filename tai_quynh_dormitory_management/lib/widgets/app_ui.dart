@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'section_heading.dart';
 
@@ -31,7 +32,7 @@ class InputSpec {
 }
 
 class AppUi {
-  static const navy = Color(0xFF1E3A8A);
+  static const navy = Color(0xFF5141E8);
   static const orange = Color(0xFFF97316);
   static const green = Color(0xFF059669);
   static const red = Color(0xFFDC2626);
@@ -49,14 +50,14 @@ class AppUi {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: dark
-              ? const Color(0xFF334155)
-              : const Color(0xFFE2E8F0),
+              ? const Color(0xFF343B55)
+              : const Color(0xFFE6E5F0),
         ),
       ),
       child: Column(
@@ -66,7 +67,9 @@ class AppUi {
             icon: icon,
             title: title,
             badge: badge,
-            color: color,
+            color: dark && color == navy
+                ? const Color(0xFFB9ADFF)
+                : color,
           ),
           if (children.isNotEmpty) const SizedBox(height: 12),
           ...children,
@@ -75,10 +78,7 @@ class AppUi {
     );
   }
 
-  static Widget badge(
-    String text, {
-    Color color = navy,
-  }) {
+  static Widget badge(String text, {Color color = navy}) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 9,
@@ -103,28 +103,51 @@ class AppUi {
   static Widget info(String label, Object? value) {
     final text = value?.toString().trim() ?? '';
 
+    final heading = Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        color: Color(0xFF8790A7),
+        fontWeight: FontWeight.w600,
+      ),
+    );
+
+    final content = SelectableText(
+      text.isEmpty ? 'Chưa cập nhật' : text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF94A3B8),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 3),
-          SelectableText(
-            text.isEmpty ? 'Chưa cập nhật' : text,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.only(bottom: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 560 &&
+              MediaQuery.textScalerOf(context).scale(14) <= 20) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: heading,
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: content),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              heading,
+              const SizedBox(height: 4),
+              content,
+            ],
+          );
+        },
       ),
     );
   }
@@ -135,11 +158,8 @@ class AppUi {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final scale = MediaQuery.textScalerOf(context)
-            .scale(14) / 14;
-
-        final effectiveWidth =
-            minWidth * scale.clamp(1.0, 2.0);
+        final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final effectiveWidth = minWidth * scale.clamp(1.0, 2.0);
 
         final columns = (constraints.maxWidth / effectiveWidth)
             .floor()
@@ -147,8 +167,7 @@ class AppUi {
             .toInt();
 
         final width =
-            (constraints.maxWidth - 12 * (columns - 1)) /
-                columns;
+            (constraints.maxWidth - 12 * (columns - 1)) / columns;
 
         return Wrap(
           spacing: 12,
@@ -172,21 +191,16 @@ class AppUi {
       stream: stream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'Không thể tải dữ liệu. '
-              'Kiểm tra kết nối và quyền Firebase.',
-            ),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(errorText(snapshot.error!)),
           );
         }
 
         if (!snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(20),
-            child: Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -214,6 +228,32 @@ class AppUi {
     if (error is StateError) {
       return error.message.toString();
     }
+
+    if (error is FirebaseException) {
+      debugPrint('[${error.plugin}/${error.code}] ${error.message}');
+
+      switch (error.code) {
+        case 'permission-denied':
+          return 'Firebase từ chối quyền ghi (permission-denied). '
+              'Kiểm tra Firestore Rules và quyền admin, '
+              'sau đó đăng xuất / đăng nhập lại.';
+
+        case 'unavailable':
+          return 'Chưa kết nối được Firestore (unavailable). '
+              'Kiểm tra mạng và thử lại.';
+
+        case 'failed-precondition':
+          return 'Firestore chưa đáp ứng điều kiện '
+              '(failed-precondition). '
+              'Chi tiết: ${error.message ?? "Kiểm tra cấu hình Firestore."}';
+
+        default:
+          return 'Lỗi Firebase (${error.code}): '
+              '${error.message ?? "Vui lòng thử lại."}';
+      }
+    }
+
+    debugPrint('Thao tác thất bại: $error');
 
     return 'Không thể hoàn tất thao tác. '
         'Kiểm tra kết nối và quyền truy cập.';
@@ -257,13 +297,17 @@ class AppUi {
               content: Text(text),
               actions: [
                 TextButton(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, false),
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    false,
+                  ),
                   child: const Text('Hủy'),
                 ),
                 FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, true),
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    true,
+                  ),
                   child: const Text('Đồng ý'),
                 ),
               ],
@@ -462,7 +506,7 @@ class _EditorDialogState extends State<_EditorDialog> {
       final options = field.options!;
 
       return DropdownButtonFormField<String>(
-        value: options.containsKey(controller.text)
+        initialValue: options.containsKey(controller.text)
             ? controller.text
             : null,
         isExpanded: true,
@@ -493,9 +537,7 @@ class _EditorDialogState extends State<_EditorDialog> {
       enabled: !_saving && field.enabled,
       maxLines: field.lines,
       keyboardType: field.number || field.integer
-          ? const TextInputType.numberWithOptions(
-              decimal: true,
-            )
+          ? const TextInputType.numberWithOptions(decimal: true)
           : field.lines > 1
               ? TextInputType.multiline
               : TextInputType.text,
@@ -529,9 +571,7 @@ class _EditorDialogState extends State<_EditorDialog> {
               if (_error != null)
                 Text(
                   _error!,
-                  style: const TextStyle(
-                    color: AppUi.red,
-                  ),
+                  style: const TextStyle(color: AppUi.red),
                 ),
             ],
           ),
@@ -546,9 +586,7 @@ class _EditorDialogState extends State<_EditorDialog> {
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
-          child: Text(
-            _saving ? 'Đang lưu…' : 'Lưu',
-          ),
+          child: Text(_saving ? 'Đang lưu…' : 'Lưu'),
         ),
       ],
     );

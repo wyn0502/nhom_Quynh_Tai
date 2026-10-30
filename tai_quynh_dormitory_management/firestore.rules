@@ -1,0 +1,268 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function username() {
+      return request.auth.token.email.split('@')[0];
+    }
+
+    function profile() {
+      return get(
+        /databases/$(database)/documents/v2_users/$(username())
+      ).data;
+    }
+
+    function admin() {
+      return signedIn() &&
+        request.auth.token.get('admin', false) == true &&
+        request.auth.token.email == 'admin@domitory.local';
+    }
+
+    function student() {
+      return signedIn() && profile().role == 'student';
+    }
+
+    function manager() {
+      return signedIn() &&
+        profile().role == 'buildingManager' &&
+        profile().manager_status == 'approved' &&
+        profile().managed_building_id != null;
+    }
+
+    function active() {
+      return admin() || student() || manager();
+    }
+
+    function ownRoom(label) {
+      return student() &&
+        profile().room_status == 'approved' &&
+        profile().pending_room_name == label;
+    }
+
+    function scoped(data) {
+      return admin() ||
+        (student() && data.owner_uid == request.auth.uid) ||
+        (
+          manager() &&
+          data.building_id == profile().managed_building_id
+        );
+    }
+
+    match /v2_users/{name} {
+      allow read: if admin() ||
+        (
+          signedIn() &&
+          resource.data.owner_uid == request.auth.uid
+        ) ||
+        (
+          student() &&
+          resource.data.role == 'student' &&
+          resource.data.room_status == 'approved' &&
+          ownRoom(resource.data.pending_room_name)
+        );
+
+      allow create: if
+        signedIn() &&
+        name == username() &&
+        name.matches('[a-z0-9_]{3,40}') &&
+        name != 'admin' &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'username',
+          'email',
+          'role',
+          'manager_status',
+          'managed_building_id',
+          'rules_version',
+          'full_name',
+          'mssv',
+          'phone',
+          'class_name',
+          'hometown',
+          'cccd',
+          'gender',
+          'room_id',
+          'room_status',
+          'pending_room_id',
+          'pending_room_name',
+          'owner_uid',
+          'created_at',
+          'rules_accepted_at'
+        ]) &&
+        request.resource.data.owner_uid == request.auth.uid &&
+        request.resource.data.username == name &&
+        request.resource.data['rules_version'] == '2026-10-30' &&
+        request.resource.data.rules_accepted_at == request.time &&
+        request.resource.data.created_at == request.time &&
+        request.resource.data.room_status == 'none' &&
+        request.resource.data.room_id == null &&
+        request.resource.data.pending_room_name == null &&
+        request.resource.data.pending_room_id == null &&
+        request.resource.data.managed_building_id == null &&
+        request.resource.data.full_name is string &&
+        request.resource.data.full_name.size() > 0 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.matches('[+]?[0-9]{9,15}') &&
+        request.resource.data.hometown is string &&
+        request.resource.data.hometown.size() > 0 &&
+        (
+          (
+            request.resource.data.role == 'student' &&
+            request.resource.data.manager_status == null &&
+            request.resource.data.mssv is string &&
+            request.resource.data.mssv.size() > 0 &&
+            request.resource.data.class_name is string &&
+            request.resource.data.class_name.size() > 0
+          ) ||
+          (
+            request.resource.data.role == 'buildingManager' &&
+            request.resource.data.manager_status == 'pending'
+          )
+        );
+
+      allow update: if
+        (
+          admin() &&
+          resource.data.role == 'student' &&
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny([
+              'role',
+              'owner_uid',
+              'username',
+              'manager_status',
+              'managed_building_id',
+              'rules_version',
+              'rules_accepted_at'
+            ])
+        ) ||
+        (
+          signedIn() &&
+          resource.data.owner_uid == request.auth.uid &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'phone',
+              'hometown',
+              'class_name'
+            ])
+        ) ||
+        (
+          student() &&
+          resource.data.owner_uid == request.auth.uid &&
+          resource.data.room_status in ['none', 'rejected'] &&
+          request.resource.data.room_status == 'pending' &&
+          request.resource.data.room_id == null &&
+          request.resource.data.pending_room_name ==
+            get(
+              /databases/$(database)/documents/v2_rooms/$(request.resource.data.pending_room_doc)
+            ).data.label &&
+          get(
+            /databases/$(database)/documents/v2_rooms/$(request.resource.data.pending_room_doc)
+          ).data.current_occupancy <
+            get(
+              /databases/$(database)/documents/v2_rooms/$(request.resource.data.pending_room_doc)
+            ).data.capacity &&
+          getAfter(
+            /databases/$(database)/documents/v2_rooms/$(request.resource.data.pending_room_doc)
+          ).data.active_requests ==
+            get(
+              /databases/$(database)/documents/v2_rooms/$(request.resource.data.pending_room_doc)
+            ).data.get('active_requests', 0) + 1 &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'room_status',
+              'room_id',
+              'pending_room_name',
+              'pending_room_doc'
+            ])
+        );
+
+      allow delete: if admin() &&
+        resource.data.role == 'student';
+    }
+
+    match /v2_rooms/{room} {
+      allow read: if admin() ||
+        student() ||
+        (
+          manager() &&
+          resource.data.building_id ==
+            profile().managed_building_id
+        );
+
+      allow create, delete: if admin();
+
+      allow update: if admin() ||
+        (
+          student() &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['active_requests']) &&
+          request.resource.data.active_requests ==
+            resource.data.get('active_requests', 0) + 1 &&
+          profile().room_status in ['none', 'rejected'] &&
+          getAfter(
+            /databases/$(database)/documents/v2_users/$(username())
+          ).data.pending_room_doc == room &&
+          getAfter(
+            /databases/$(database)/documents/v2_users/$(username())
+          ).data.room_status == 'pending'
+        );
+    }
+
+    match /v2_announcements/{id} {
+      allow read: if active();
+      allow write: if admin();
+    }
+
+    match /v2_invoices/{id} {
+      allow read: if admin() ||
+        ownRoom(resource.data.room_name);
+
+      allow write: if admin();
+    }
+
+    match /v2_assets/{id} {
+      allow read: if admin() ||
+        ownRoom(resource.data.room_name);
+
+      allow write: if admin();
+    }
+
+    match /v2_tickets/{id} {
+      allow read: if admin() ||
+        ownRoom(resource.data.room_name);
+
+      allow create: if admin() ||
+        (
+          ownRoom(request.resource.data.room_name) &&
+          request.resource.data.owner_username == username() &&
+          request.resource.data.status == 'pending'
+        );
+
+      allow update, delete: if admin();
+    }
+
+    match /v2_attendance/{id} {
+      allow read: if scoped(resource.data);
+      allow write: if false;
+    }
+
+    match /v2_violations/{id} {
+      allow read: if scoped(resource.data);
+      allow write: if false;
+    }
+
+    match /v2_attendance_sessions/{day} {
+      allow read: if active();
+      allow write: if false;
+    }
+
+    match /v2_manager_assignments/{building} {
+      allow read: if admin();
+      allow write: if false;
+    }
+  }
+}

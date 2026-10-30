@@ -3,6 +3,13 @@ import 'base_entity.dart';
 enum UserRole {
   student,
   admin,
+  buildingManager,
+}
+
+enum ManagerStatus {
+  pending,
+  approved,
+  rejected,
 }
 
 enum RoomStatus {
@@ -15,12 +22,15 @@ enum RoomStatus {
 class User extends BaseEntity<int?> {
   final String username;
 
-  // Giữ thuộc tính để tương thích mã cũ.
-  // Không ghi mật khẩu vào Firestore.
+  // Giữ để tương thích mã cũ, không lưu mật khẩu vào Firestore.
   String? password;
 
   String email;
   UserRole role;
+
+  ManagerStatus managerStatus;
+  String? managedBuildingId;
+  String? rulesVersion;
 
   String? fullName;
   String? mssv;
@@ -43,6 +53,9 @@ class User extends BaseEntity<int?> {
     required this.email,
     this.password,
     this.role = UserRole.student,
+    this.managerStatus = ManagerStatus.pending,
+    this.managedBuildingId,
+    this.rulesVersion,
     this.fullName,
     this.mssv,
     this.phone,
@@ -69,7 +82,15 @@ class User extends BaseEntity<int?> {
       email: json['email']?.toString() ?? '',
       role: json['role'] == 'admin'
           ? UserRole.admin
-          : UserRole.student,
+          : json['role'] == 'buildingManager'
+              ? UserRole.buildingManager
+              : UserRole.student,
+      managerStatus: ManagerStatus.values.firstWhere(
+        (value) => value.name == json['manager_status'],
+        orElse: () => ManagerStatus.pending,
+      ),
+      managedBuildingId: json['managed_building_id']?.toString(),
+      rulesVersion: json['rules_version']?.toString(),
       fullName: json['full_name']?.toString(),
       mssv: json['mssv']?.toString(),
       phone: json['phone']?.toString(),
@@ -90,6 +111,10 @@ class User extends BaseEntity<int?> {
       'username': username,
       'email': email,
       'role': role.name,
+      'manager_status':
+          role == UserRole.buildingManager ? managerStatus.name : null,
+      'managed_building_id': managedBuildingId,
+      'rules_version': rulesVersion,
       'full_name': fullName,
       'mssv': mssv,
       'phone': phone,
@@ -116,13 +141,10 @@ class User extends BaseEntity<int?> {
     switch (value?.toString()) {
       case 'pending':
         return RoomStatus.pending;
-
       case 'approved':
         return RoomStatus.approved;
-
       case 'rejected':
         return RoomStatus.rejected;
-
       default:
         return RoomStatus.none;
     }
@@ -130,20 +152,29 @@ class User extends BaseEntity<int?> {
 
   bool get isAdmin => role == UserRole.admin;
 
-  bool get hasActiveRoom {
-    return roomStatus == RoomStatus.approved &&
-        pendingRoomName?.trim().isNotEmpty == true;
-  }
+  bool get isBuildingManager => role == UserRole.buildingManager;
 
-  bool get hasPendingRoom {
-    return roomStatus == RoomStatus.pending;
-  }
+  bool get canManageBuilding =>
+      isBuildingManager &&
+      managerStatus == ManagerStatus.approved &&
+      managedBuildingId?.isNotEmpty == true;
 
-  bool get canRegisterRoom {
-    return role == UserRole.student &&
-        (roomStatus == RoomStatus.none ||
-            roomStatus == RoomStatus.rejected);
-  }
+  String get roleLabel => isAdmin
+      ? 'Quản trị viên'
+      : isBuildingManager
+          ? 'Quản lý tòa'
+          : 'Sinh viên';
+
+  bool get hasActiveRoom =>
+      roomStatus == RoomStatus.approved &&
+      pendingRoomName?.trim().isNotEmpty == true;
+
+  bool get hasPendingRoom => roomStatus == RoomStatus.pending;
+
+  bool get canRegisterRoom =>
+      role == UserRole.student &&
+      (roomStatus == RoomStatus.none ||
+          roomStatus == RoomStatus.rejected);
 
   String get displayName {
     final value = fullName?.trim() ?? '';
@@ -154,13 +185,10 @@ class User extends BaseEntity<int?> {
     switch (roomStatus) {
       case RoomStatus.pending:
         return 'Đang chờ duyệt';
-
       case RoomStatus.approved:
         return 'Đã có phòng';
-
       case RoomStatus.rejected:
         return 'Bị từ chối';
-
       case RoomStatus.none:
         return 'Chưa đăng ký phòng';
     }
@@ -177,7 +205,7 @@ class User extends BaseEntity<int?> {
         'Điện thoại: ${phone ?? "Chưa cập nhật"}\n'
         'Giới tính: $gender\n'
         'Quê quán: ${hometown ?? "Chưa cập nhật"}\n'
-        'Vai trò: ${isAdmin ? "Quản trị viên" : "Sinh viên"}\n'
+        'Vai trò: $roleLabel\n'
         'Trạng thái phòng: ${getRoomStatus()}';
   }
 

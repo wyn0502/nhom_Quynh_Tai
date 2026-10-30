@@ -15,71 +15,86 @@ class SectionHeading extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            SizedBox(
-              width: constraints.maxWidth,
-              child: Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: 1,
-                    ),
-                    child: Icon(
-                      icon,
-                      color: color,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      softWrap: true,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final heading = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
+                ),
+              ),
+            ],
+          );
+
+          final tag = Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 6,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              badge,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (badge.trim().isNotEmpty)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: color.withValues(
-                    alpha: 0.08,
+          );
+
+          if (badge.trim().isNotEmpty &&
+              constraints.maxWidth >= 600 &&
+              MediaQuery.textScalerOf(context).scale(14) <= 20) {
+            return Row(
+              children: [
+                Expanded(child: heading),
+                const SizedBox(width: 12),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * .45,
                   ),
-                  borderRadius:
-                      BorderRadius.circular(8),
+                  child: tag,
                 ),
-                child: Text(
-                  badge,
-                  softWrap: true,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                  ),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              heading,
+              if (badge.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: tag,
                 ),
-              ),
-          ],
-        );
-      },
-    );
-  }
+            ],
+          );
+        },
+      );
 }

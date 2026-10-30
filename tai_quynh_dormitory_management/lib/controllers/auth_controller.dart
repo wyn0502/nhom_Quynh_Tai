@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 import '../models/user.dart';
+import '../models/dormitory_rules.dart';
 
 class AuthResult {
   final bool success;
@@ -42,12 +43,14 @@ class AuthController extends ChangeNotifier {
   User get currentUser => _currentUser;
   UserRole get currentRole => _currentUser.role;
 
-  bool get isAdmin {
-    return _isLoggedIn &&
-        _currentUser.role == UserRole.admin;
-  }
+  bool get isAdmin =>
+      _isLoggedIn && _currentUser.role == UserRole.admin;
 
-  bool get isStudent => !isAdmin;
+  bool get isStudent =>
+      _isLoggedIn && _currentUser.role == UserRole.student;
+
+  bool get isBuildingManager =>
+      _isLoggedIn && _currentUser.canManageBuilding;
 
   static String accountEmail(String username) {
     final normalized = username.trim().toLowerCase();
@@ -101,13 +104,10 @@ class AuthController extends ChangeNotifier {
       final token = await firebaseUser.getIdTokenResult(true);
 
       final hasAdminPermission =
-          normalized == 'admin' &&
-              token.claims?['admin'] == true;
+          normalized == 'admin' && token.claims?['admin'] == true;
 
       if (normalized == 'admin' && !hasAdminPermission) {
-        throw StateError(
-          'Tài khoản admin chưa được cấu hình.',
-        );
+        throw StateError('Tài khoản admin chưa được cấu hình.');
       }
 
       final profileSnapshot = await _profile(normalized).get();
@@ -124,9 +124,18 @@ class AuthController extends ChangeNotifier {
 
       final user = User.fromJson(profileData);
 
-      if ((user.role == UserRole.admin) !=
-          hasAdminPermission) {
+      if ((user.role == UserRole.admin) != hasAdminPermission) {
         throw StateError('Quyền tài khoản không hợp lệ.');
+      }
+
+      if (user.isBuildingManager && !user.canManageBuilding) {
+        throw StateError(
+          user.managerStatus == ManagerStatus.rejected
+              ? 'Tài khoản quản lý tòa đã bị từ chối hoặc thu hồi quyền. '
+                  'Liên hệ admin.'
+              : 'Tài khoản quản lý tòa đang chờ admin duyệt '
+                  'và phân công tòa.',
+        );
       }
 
       await _profileSubscription?.cancel();
@@ -134,8 +143,7 @@ class AuthController extends ChangeNotifier {
       _currentUser = user;
       _isLoggedIn = true;
 
-      _profileSubscription =
-          _profile(normalized).snapshots().listen(
+      _profileSubscription = _profile(normalized).snapshots().listen(
         (document) {
           final data = document.data();
 
@@ -163,17 +171,11 @@ class AuthController extends ChangeNotifier {
       _profileSubscription = null;
 
       _isLoggedIn = false;
-
-      _currentUser = User(
-        username: '',
-        email: '',
-      );
+      _currentUser = User(username: '', email: '');
 
       try {
         await fb.FirebaseAuth.instance.signOut();
-      } catch (_) {
-        // Trạng thái giao diện vẫn được đưa về đăng xuất.
-      }
+      } catch (_) {}
 
       return AuthResult(
         success: false,
@@ -195,24 +197,23 @@ class AuthController extends ChangeNotifier {
     required String className,
     required String hometown,
     required UserRole role,
+    bool acceptedRules = false,
   }) async {
     final normalized = username.trim().toLowerCase();
 
-    if (role != UserRole.student ||
+    if ((role != UserRole.student &&
+            role != UserRole.buildingManager) ||
         normalized == 'admin') {
       return const AuthResult(
         success: false,
-        message:
-            'Chỉ cho phép đăng ký tài khoản sinh viên.',
+        message: 'Chỉ cho phép đăng ký sinh viên hoặc quản lý tòa.',
       );
     }
 
-    if (!RegExp(r'^[a-z0-9_]{3,40}$')
-        .hasMatch(normalized)) {
+    if (!RegExp(r'^[a-z0-9_]{3,40}$').hasMatch(normalized)) {
       return const AuthResult(
         success: false,
-        message:
-            'Tên đăng nhập gồm 3–40 ký tự: '
+        message: 'Tên đăng nhập gồm 3–40 ký tự: '
             'chữ thường, số hoặc dấu gạch dưới.',
       );
     }
@@ -225,11 +226,28 @@ class AuthController extends ChangeNotifier {
     }
 
     if (fullName.trim().isEmpty ||
-        mssv.trim().isEmpty) {
+        (role == UserRole.student &&
+            (mssv.trim().isEmpty || className.trim().isEmpty)) ||
+        phone.trim().isEmpty ||
+        hometown.trim().isEmpty) {
       return const AuthResult(
         success: false,
-        message:
-            'Vui lòng nhập họ tên và mã số sinh viên.',
+        message: 'Vui lòng điền đầy đủ thông tin hồ sơ bắt buộc.',
+      );
+    }
+
+    if (!RegExp(r'^\+?[0-9]{9,15}$').hasMatch(phone.trim())) {
+      return const AuthResult(
+        success: false,
+        message: 'Số điện thoại phải gồm 9–15 chữ số, '
+            'có thể bắt đầu bằng +.',
+      );
+    }
+
+    if (!acceptedRules) {
+      return const AuthResult(
+        success: false,
+        message: 'Bạn cần đọc và đồng ý nội quy ký túc xá.',
       );
     }
 
@@ -243,8 +261,7 @@ class AuthController extends ChangeNotifier {
     if (_isLoggedIn) {
       return const AuthResult(
         success: false,
-        message:
-            'Vui lòng đăng xuất trước khi đăng ký tài khoản mới.',
+        message: 'Vui lòng đăng xuất trước khi đăng ký tài khoản mới.',
       );
     }
 
@@ -256,8 +273,7 @@ class AuthController extends ChangeNotifier {
 
     try {
       final credential =
-          await fb.FirebaseAuth.instance
-              .createUserWithEmailAndPassword(
+          await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: accountEmail(normalized),
         password: password,
       );
@@ -268,16 +284,17 @@ class AuthController extends ChangeNotifier {
         throw StateError('Không thể tạo tài khoản.');
       }
 
-      final student = User(
+      final user = User(
         id: DateTime.now().microsecondsSinceEpoch,
         username: normalized,
         email: email.trim(),
         fullName: fullName.trim(),
-        mssv: mssv.trim(),
+        mssv: role == UserRole.student ? mssv.trim() : null,
         phone: phone.trim(),
-        className: className.trim(),
+        className: role == UserRole.student ? className.trim() : null,
         hometown: hometown.trim(),
-        role: UserRole.student,
+        role: role,
+        rulesVersion: DormitoryRules.version,
         roomStatus: RoomStatus.none,
         roomId: null,
         pendingRoomId: null,
@@ -285,17 +302,20 @@ class AuthController extends ChangeNotifier {
       );
 
       await _profile(normalized).set({
-        ...student.toJson(),
+        ...user.toJson(),
         'owner_uid': createdUser.uid,
         'created_at': FieldValue.serverTimestamp(),
+        'rules_accepted_at': FieldValue.serverTimestamp(),
       });
 
       profileSaved = true;
 
-      return const AuthResult(
+      return AuthResult(
         success: true,
-        message:
-            'Đăng ký thành công. Vui lòng đăng nhập.',
+        message: role == UserRole.buildingManager
+            ? 'Đã gửi đăng ký quản lý tòa. '
+                'Vui lòng chờ admin duyệt và phân công tòa.'
+            : 'Đăng ký thành công. Vui lòng đăng nhập.',
       );
     } catch (error) {
       if (createdUser != null && !profileSaved) {
@@ -316,17 +336,11 @@ class AuthController extends ChangeNotifier {
     } finally {
       try {
         await fb.FirebaseAuth.instance.signOut();
-      } catch (_) {
-        // Không đổi kết quả tạo hồ sơ đã hoàn tất.
-      }
+      } catch (_) {}
 
       _isLoggedIn = false;
       _isLoading = false;
-
-      _currentUser = User(
-        username: '',
-        email: '',
-      );
+      _currentUser = User(username: '', email: '');
 
       notifyListeners();
     }
@@ -334,8 +348,10 @@ class AuthController extends ChangeNotifier {
 
   void syncCurrentUser(User user) {
     if (!_isLoggedIn) return;
+    if (user.username != _currentUser.username) return;
 
-    if (user.username != _currentUser.username) {
+    if (user.isBuildingManager && !user.canManageBuilding) {
+      logout();
       return;
     }
 
@@ -348,11 +364,7 @@ class AuthController extends ChangeNotifier {
     _profileSubscription = null;
 
     _isLoggedIn = false;
-
-    _currentUser = User(
-      username: '',
-      email: '',
-    );
+    _currentUser = User(username: '', email: '');
 
     notifyListeners();
 
@@ -368,25 +380,16 @@ class AuthController extends ChangeNotifier {
       switch (error.code) {
         case 'email-already-in-use':
           return 'Tên đăng nhập đã tồn tại.';
-
         case 'weak-password':
           return 'Mật khẩu chưa đủ mạnh.';
-
         case 'network-request-failed':
-          return 'Không thể kết nối. '
-              'Vui lòng kiểm tra mạng.';
-
+          return 'Không thể kết nối. Vui lòng kiểm tra mạng.';
         case 'operation-not-allowed':
-          return 'Cần bật Email/Password '
-              'trong Firebase Authentication.';
-
+          return 'Cần bật Email/Password trong Firebase Authentication.';
         case 'too-many-requests':
-          return 'Quá nhiều lần thử. '
-              'Vui lòng thử lại sau.';
-
+          return 'Quá nhiều lần thử. Vui lòng thử lại sau.';
         case 'user-disabled':
           return 'Tài khoản đã bị vô hiệu hóa.';
-
         default:
           return 'Tên đăng nhập hoặc mật khẩu không đúng, '
               'hoặc tài khoản không khả dụng.';

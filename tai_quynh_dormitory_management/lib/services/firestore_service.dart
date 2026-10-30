@@ -9,19 +9,15 @@ import '../models/asset.dart';
 import '../models/announcement.dart';
 
 class FirestoreService {
-  static final FirestoreService _instance =
-      FirestoreService._();
+  static final FirestoreService _instance = FirestoreService._();
 
   factory FirestoreService() => _instance;
 
   FirestoreService._();
 
-  final FirebaseFirestore db =
-      FirebaseFirestore.instance;
+  final FirebaseFirestore db = FirebaseFirestore.instance;
 
-  CollectionReference<Map<String, dynamic>> collection(
-    String name,
-  ) {
+  CollectionReference<Map<String, dynamic>> collection(String name) {
     return db.collection('v2_$name');
   }
 
@@ -38,15 +34,24 @@ class FirestoreService {
   }
 
   Stream<List<Room>> getRoomsStream() {
-    return collection('rooms').snapshots().map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          return Room.fromJson(
-            document.data(),
-            document.id,
-          );
-        }).toList();
-      },
+    final auth = AuthController.instance;
+
+    Query<Map<String, dynamic>> rooms = collection('rooms');
+
+    if (auth.isBuildingManager) {
+      rooms = rooms.where(
+        'building_id',
+        isEqualTo: auth.currentUser.managedBuildingId,
+      );
+    }
+
+    return rooms.snapshots().map(
+      (snapshot) => snapshot.docs.map((document) {
+        return Room.fromJson(
+          document.data(),
+          document.id,
+        );
+      }).toList(),
     );
   }
 
@@ -55,31 +60,23 @@ class FirestoreService {
         .where('role', isEqualTo: 'student')
         .snapshots()
         .map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          return User.fromJson(document.data());
-        }).toList();
-      },
-    );
+          (snapshot) => snapshot.docs.map((document) {
+            return User.fromJson(document.data());
+          }).toList(),
+        );
   }
 
-  Stream<List<User>> getRoommatesStream(
-    String roomName,
-  ) {
+  Stream<List<User>> getRoommatesStream(String roomName) {
     return collection('users')
+        .where('role', isEqualTo: 'student')
         .where('room_status', isEqualTo: 'approved')
-        .where(
-          'pending_room_name',
-          isEqualTo: roomName,
-        )
+        .where('pending_room_name', isEqualTo: roomName)
         .snapshots()
         .map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          return User.fromJson(document.data());
-        }).toList();
-      },
-    );
+          (snapshot) => snapshot.docs.map((document) {
+            return User.fromJson(document.data());
+          }).toList(),
+        );
   }
 
   Stream<List<Invoice>> getInvoicesStream({
@@ -88,30 +85,23 @@ class FirestoreService {
     final auth = AuthController.instance;
 
     if (!auth.isAdmin &&
-        auth.currentUser.roomStatus !=
-            RoomStatus.approved) {
+        auth.currentUser.roomStatus != RoomStatus.approved) {
       return Stream.value(<Invoice>[]);
     }
 
-    Query<Map<String, dynamic>> query =
-        collection('invoices');
+    Query<Map<String, dynamic>> query = collection('invoices');
 
     if (roomName != null) {
-      query = query.where(
-        'room_name',
-        isEqualTo: roomName,
-      );
+      query = query.where('room_name', isEqualTo: roomName);
     }
 
     return query.snapshots().map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          return Invoice.fromJson(
-            document.data(),
-            document.id,
-          );
-        }).toList();
-      },
+      (snapshot) => snapshot.docs.map((document) {
+        return Invoice.fromJson(
+          document.data(),
+          document.id,
+        );
+      }).toList(),
     );
   }
 
@@ -121,96 +111,68 @@ class FirestoreService {
     final auth = AuthController.instance;
 
     if (!auth.isAdmin &&
-        auth.currentUser.roomStatus !=
-            RoomStatus.approved) {
+        auth.currentUser.roomStatus != RoomStatus.approved) {
       return Stream.value(<Ticket>[]);
     }
 
-    Query<Map<String, dynamic>> query =
-        collection('tickets');
+    Query<Map<String, dynamic>> query = collection('tickets');
 
     if (roomName != null) {
-      query = query.where(
-        'room_name',
-        isEqualTo: roomName,
-      );
+      query = query.where('room_name', isEqualTo: roomName);
     }
 
     return query.snapshots().map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          return Ticket.fromJson(
-            document.data(),
-            document.id,
-          );
-        }).toList();
-      },
+      (snapshot) => snapshot.docs.map((document) {
+        return Ticket.fromJson(
+          document.data(),
+          document.id,
+        );
+      }).toList(),
     );
   }
 
-  Stream<List<Announcement>>
-      getAnnouncementsStream() {
-    return collection('announcements')
-        .snapshots()
-        .map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          final data = document.data();
+  Stream<List<Announcement>> getAnnouncementsStream() {
+    return collection('announcements').snapshots().map(
+      (snapshot) => snapshot.docs.map((document) {
+        final data = document.data();
 
-          return Announcement(
-            id: document.id,
-            title: data['title']?.toString() ?? '',
-            content:
-                data['content']?.toString() ?? '',
-            department:
-                data['department']?.toString() ?? '',
-            date: data['date']?.toString() ?? '',
-          );
-        }).toList();
-      },
+        return Announcement(
+          id: document.id,
+          title: data['title']?.toString() ?? '',
+          content: data['content']?.toString() ?? '',
+          department: data['department']?.toString() ?? '',
+          date: data['date']?.toString() ?? '',
+        );
+      }).toList(),
     );
   }
 
-  Stream<List<RoomAsset>> getRoomAssetsStream(
-    String roomName,
-  ) {
+  Stream<List<RoomAsset>> getRoomAssetsStream(String roomName) {
     return collection('assets')
-        .where(
-          'room_name',
-          isEqualTo: roomName,
-        )
+        .where('room_name', isEqualTo: roomName)
         .snapshots()
         .map(
-      (snapshot) {
-        return snapshot.docs.map((document) {
-          final data = document.data();
+          (snapshot) => snapshot.docs.map((document) {
+            final data = document.data();
 
-          return RoomAsset(
-            id: document.id,
-            name: data['name']?.toString() ?? '',
-            description:
-                data['description']?.toString() ?? '',
-            quantity:
-                (data['quantity'] as num?)
-                        ?.toInt() ??
-                    0,
-            status:
-                data['status']?.toString() ?? 'used',
-          );
-        }).toList();
-      },
-    );
+            return RoomAsset(
+              id: document.id,
+              name: data['name']?.toString() ?? '',
+              description: data['description']?.toString() ?? '',
+              quantity: (data['quantity'] as num?)?.toInt() ?? 0,
+              status: data['status']?.toString() ?? 'used',
+            );
+          }).toList(),
+        );
   }
 
-  Future<DocumentReference<Map<String, dynamic>>>
-      _user(int userId) async {
+  Future<DocumentReference<Map<String, dynamic>>> _user(
+    int userId,
+  ) async {
     final auth = AuthController.instance;
 
-    if (auth.isLoggedIn &&
-        auth.currentUser.id == userId) {
-      return collection('users').doc(
-        auth.currentUser.username,
-      );
+    if (auth.isLoggedIn && auth.currentUser.id == userId) {
+      return collection('users').doc(auth.currentUser.username);
     }
 
     requireAdmin();
@@ -221,33 +183,29 @@ class FirestoreService {
         .get();
 
     if (snapshot.docs.isEmpty) {
-      throw StateError(
-        'Không tìm thấy sinh viên.',
-      );
+      throw StateError('Không tìm thấy sinh viên.');
     }
 
     return snapshot.docs.first.reference;
   }
 
-  Future<DocumentReference<Map<String, dynamic>>>
-      _room(String label) async {
+  Future<DocumentReference<Map<String, dynamic>>> _room(
+    String label,
+  ) async {
     final snapshot = await collection('rooms')
         .where('label', isEqualTo: label)
         .limit(1)
         .get();
 
     if (snapshot.docs.isEmpty) {
-      throw StateError(
-        'Phòng không còn tồn tại.',
-      );
+      throw StateError('Phòng không còn tồn tại.');
     }
 
     return snapshot.docs.first.reference;
   }
 
   Future<void> _sync(
-    DocumentReference<Map<String, dynamic>>
-        reference,
+    DocumentReference<Map<String, dynamic>> reference,
   ) async {
     final snapshot = await reference.get();
     final data = snapshot.data();
@@ -266,11 +224,9 @@ class FirestoreService {
     final auth = AuthController.instance;
 
     if (!auth.isLoggedIn ||
-        auth.isAdmin ||
+        !auth.isStudent ||
         auth.currentUser.id != userId) {
-      throw StateError(
-        'Không có quyền đăng ký phòng.',
-      );
+      throw StateError('Không có quyền đăng ký phòng.');
     }
 
     final userReference = collection('users').doc(
@@ -280,46 +236,35 @@ class FirestoreService {
     final roomReference = await _room(roomName);
 
     await db.runTransaction((transaction) async {
-      final userSnapshot =
-          await transaction.get(userReference);
-
-      final roomSnapshot =
-          await transaction.get(roomReference);
+      final userSnapshot = await transaction.get(userReference);
+      final roomSnapshot = await transaction.get(roomReference);
 
       final user = userSnapshot.data();
       final room = roomSnapshot.data();
 
       if (user == null || room == null) {
-        throw StateError(
-          'Không tìm thấy hồ sơ hoặc phòng.',
-        );
+        throw StateError('Không tìm thấy hồ sơ hoặc phòng.');
       }
 
       final status = user['room_status'];
 
-      if (status == 'pending' ||
-          status == 'approved') {
+      if (status == 'pending' || status == 'approved') {
         throw StateError(
-          'Bạn đã đăng ký phòng. '
-          'Vui lòng chờ admin xử lý.',
+          'Bạn đã đăng ký phòng. Vui lòng chờ admin xử lý.',
         );
       }
 
       final occupancy =
-          (room['current_occupancy'] as num)
-              .toInt();
+          (room['current_occupancy'] as num).toInt();
 
-      final capacity =
-          (room['capacity'] as num).toInt();
+      final capacity = (room['capacity'] as num).toInt();
 
       if (occupancy >= capacity) {
         throw StateError('Phòng đã đầy.');
       }
 
       final requests =
-          (room['active_requests'] as num?)
-                  ?.toInt() ??
-              0;
+          (room['active_requests'] as num?)?.toInt() ?? 0;
 
       transaction.update(userReference, {
         'room_status': 'pending',
@@ -346,8 +291,7 @@ class FirestoreService {
 
     if (status == RoomStatus.pending) {
       throw StateError(
-        'Trạng thái chờ duyệt được tạo '
-        'khi sinh viên đăng ký.',
+        'Trạng thái chờ duyệt được tạo khi sinh viên đăng ký.',
       );
     }
 
@@ -359,64 +303,44 @@ class FirestoreService {
             : null;
 
     await db.runTransaction((transaction) async {
-      final userSnapshot =
-          await transaction.get(userReference);
-
+      final userSnapshot = await transaction.get(userReference);
       final user = userSnapshot.data();
 
-      if (user == null ||
-          user['role'] != 'student') {
-        throw StateError(
-          'Không tìm thấy sinh viên hợp lệ.',
-        );
+      if (user == null || user['role'] != 'student') {
+        throw StateError('Không tìm thấy sinh viên hợp lệ.');
       }
 
-      final oldRoomId =
-          user['pending_room_doc'] as String?;
+      final oldRoomId = user['pending_room_doc'] as String?;
 
-      final oldRoomReference =
-          oldRoomId == null
-              ? null
-              : collection('rooms').doc(oldRoomId);
+      final oldRoomReference = oldRoomId == null
+          ? null
+          : collection('rooms').doc(oldRoomId);
 
       final newRoomReference =
           targetReference ?? oldRoomReference;
 
-      final oldRoom =
-          oldRoomReference == null
-              ? null
-              : (await transaction.get(
-                  oldRoomReference,
-                ))
-                  .data();
+      final oldRoom = oldRoomReference == null
+          ? null
+          : (await transaction.get(oldRoomReference)).data();
 
-      final newRoom =
-          newRoomReference == null
-              ? null
-              : (await transaction.get(
-                  newRoomReference,
-                ))
-                  .data();
+      final newRoom = newRoomReference == null
+          ? null
+          : (await transaction.get(newRoomReference)).data();
 
       final oldStatus = user['room_status'];
 
       if (status == RoomStatus.approved) {
-        if (newRoom == null ||
-            newRoomReference == null) {
-          throw StateError(
-            'Chưa chọn phòng hợp lệ.',
-          );
+        if (newRoom == null || newRoomReference == null) {
+          throw StateError('Chưa chọn phòng hợp lệ.');
         }
 
         if (oldStatus == 'approved' &&
-            oldRoomReference?.id ==
-                newRoomReference.id) {
+            oldRoomReference?.id == newRoomReference.id) {
           return;
         }
 
         final occupancy =
-            (newRoom['current_occupancy'] as num)
-                .toInt();
+            (newRoom['current_occupancy'] as num).toInt();
 
         final capacity =
             (newRoom['capacity'] as num).toInt();
@@ -428,13 +352,10 @@ class FirestoreService {
         }
       }
 
-      if (oldRoom != null &&
-          oldRoomReference != null) {
+      if (oldRoom != null && oldRoomReference != null) {
         if (oldStatus == 'pending') {
           final requests =
-              (oldRoom['active_requests'] as num?)
-                      ?.toInt() ??
-                  0;
+              (oldRoom['active_requests'] as num?)?.toInt() ?? 0;
 
           if (requests < 1) {
             throw StateError(
@@ -442,61 +363,48 @@ class FirestoreService {
             );
           }
 
-          transaction.update(
-            oldRoomReference,
-            {
-              'active_requests': requests - 1,
-            },
-          );
+          transaction.update(oldRoomReference, {
+            'active_requests': requests - 1,
+          });
         }
 
         if (oldStatus == 'approved') {
           final occupancy =
-              (oldRoom['current_occupancy'] as num)
-                  .toInt();
+              (oldRoom['current_occupancy'] as num).toInt();
 
           if (occupancy < 1) {
-            throw StateError(
-              'Sĩ số phòng không hợp lệ.',
-            );
+            throw StateError('Sĩ số phòng không hợp lệ.');
           }
 
-          transaction.update(
-            oldRoomReference,
-            {
-              'current_occupancy': occupancy - 1,
-            },
-          );
+          transaction.update(oldRoomReference, {
+            'current_occupancy': occupancy - 1,
+          });
         }
       }
 
       if (status == RoomStatus.approved) {
         final occupancy =
-            (newRoom!['current_occupancy'] as num)
-                .toInt();
+            (newRoom!['current_occupancy'] as num).toInt();
 
-        transaction.update(
-          newRoomReference!,
-          {
-            'current_occupancy': occupancy + 1,
-          },
-        );
+        transaction.update(newRoomReference!, {
+          'current_occupancy': occupancy + 1,
+        });
       }
 
       transaction.update(userReference, {
         'room_status': status.name,
-        'room_id':
-            status == RoomStatus.approved
-                ? (roomId ?? 1)
-                : null,
-        'pending_room_doc':
-            status == RoomStatus.approved
-                ? newRoomReference!.id
-                : null,
-        'pending_room_name':
-            status == RoomStatus.approved
-                ? newRoom!['label']
-                : null,
+        'room_approved_at': status == RoomStatus.approved
+            ? FieldValue.serverTimestamp()
+            : null,
+        'room_id': status == RoomStatus.approved
+            ? (roomId ?? 1)
+            : null,
+        'pending_room_doc': status == RoomStatus.approved
+            ? newRoomReference!.id
+            : null,
+        'pending_room_name': status == RoomStatus.approved
+            ? newRoom!['label']
+            : null,
       });
     });
 
@@ -513,10 +421,8 @@ class FirestoreService {
 
     await reference.update({
       if (phone != null) 'phone': phone.trim(),
-      if (hometown != null)
-        'hometown': hometown.trim(),
-      if (className != null)
-        'class_name': className.trim(),
+      if (hometown != null) 'hometown': hometown.trim(),
+      if (className != null) 'class_name': className.trim(),
     });
 
     await _sync(reference);
@@ -527,44 +433,30 @@ class FirestoreService {
 
     final userReference = await _user(userId);
 
-    // Xóa hồ sơ và giải phóng phòng trong cùng transaction.
     await db.runTransaction((transaction) async {
-      final snapshot =
-          await transaction.get(userReference);
-
+      final snapshot = await transaction.get(userReference);
       final user = snapshot.data();
 
       if (user == null) return;
 
       if (user['role'] != 'student') {
-        throw StateError(
-          'Chỉ được xóa hồ sơ sinh viên.',
-        );
+        throw StateError('Chỉ được xóa hồ sơ sinh viên.');
       }
 
-      final roomId =
-          user['pending_room_doc'] as String?;
+      final roomId = user['pending_room_doc'] as String?;
 
-      final roomReference =
-          roomId == null
-              ? null
-              : collection('rooms').doc(roomId);
+      final roomReference = roomId == null
+          ? null
+          : collection('rooms').doc(roomId);
 
-      final room =
-          roomReference == null
-              ? null
-              : (await transaction.get(
-                  roomReference,
-                ))
-                  .data();
+      final room = roomReference == null
+          ? null
+          : (await transaction.get(roomReference)).data();
 
-      if (room != null &&
-          roomReference != null) {
+      if (room != null && roomReference != null) {
         if (user['room_status'] == 'pending') {
           final requests =
-              (room['active_requests'] as num?)
-                      ?.toInt() ??
-                  0;
+              (room['active_requests'] as num?)?.toInt() ?? 0;
 
           if (requests < 1) {
             throw StateError(
@@ -579,13 +471,10 @@ class FirestoreService {
 
         if (user['room_status'] == 'approved') {
           final occupancy =
-              (room['current_occupancy'] as num)
-                  .toInt();
+              (room['current_occupancy'] as num).toInt();
 
           if (occupancy < 1) {
-            throw StateError(
-              'Sĩ số phòng không hợp lệ.',
-            );
+            throw StateError('Sĩ số phòng không hợp lệ.');
           }
 
           transaction.update(roomReference, {
@@ -612,22 +501,15 @@ class FirestoreService {
   void _validateRoom(Room room) {
     if (room.name.trim().isEmpty ||
         room.buildingId.trim().isEmpty) {
-      throw StateError(
-        'Vui lòng nhập tên phòng và tòa nhà.',
-      );
+      throw StateError('Vui lòng nhập tên phòng và tòa nhà.');
     }
 
     if (room.capacity < 1) {
-      throw StateError(
-        'Sức chứa phải lớn hơn 0.',
-      );
+      throw StateError('Sức chứa phải lớn hơn 0.');
     }
 
-    if (!room.fixedPrice.isFinite ||
-        room.fixedPrice < 0) {
-      throw StateError(
-        'Giá phòng không hợp lệ.',
-      );
+    if (!room.fixedPrice.isFinite || room.fixedPrice < 0) {
+      throw StateError('Giá phòng không hợp lệ.');
     }
   }
 
@@ -642,12 +524,10 @@ class FirestoreService {
       '${room.buildingId}_${room.name}',
     );
 
-    final reference =
-        collection('rooms').doc(documentId);
+    final reference = collection('rooms').doc(documentId);
 
     await db.runTransaction((transaction) async {
-      final snapshot =
-          await transaction.get(reference);
+      final snapshot = await transaction.get(reference);
 
       if (snapshot.exists) {
         throw StateError('Phòng đã tồn tại.');
@@ -671,32 +551,24 @@ class FirestoreService {
     room.name = room.name.trim();
     room.buildingId = room.buildingId.trim();
 
-    final reference =
-        collection('rooms').doc(documentId);
+    final reference = collection('rooms').doc(documentId);
 
     await db.runTransaction((transaction) async {
-      final old =
-          (await transaction.get(reference)).data();
+      final old = (await transaction.get(reference)).data();
 
       if (old == null) {
-        throw StateError(
-          'Phòng không còn tồn tại.',
-        );
+        throw StateError('Phòng không còn tồn tại.');
       }
 
       final occupancy =
-          (old['current_occupancy'] as num)
-              .toInt();
+          (old['current_occupancy'] as num).toInt();
 
       final requests =
-          (old['active_requests'] as num?)
-                  ?.toInt() ??
-              0;
+          (old['active_requests'] as num?)?.toInt() ?? 0;
 
       if (room.capacity < occupancy) {
         throw StateError(
-          'Sức chứa không được nhỏ hơn '
-          'số sinh viên đang ở.',
+          'Sức chứa không được nhỏ hơn số sinh viên đang ở.',
         );
       }
 
@@ -708,35 +580,25 @@ class FirestoreService {
         );
       }
 
-      transaction.update(
-        reference,
-        _roomData(room),
-      );
+      transaction.update(reference, _roomData(room));
     });
   }
 
-  Future<void> deleteRoom(
-    String documentId,
-  ) async {
+  Future<void> deleteRoom(String documentId) async {
     requireAdmin();
 
-    final reference =
-        collection('rooms').doc(documentId);
+    final reference = collection('rooms').doc(documentId);
 
     await db.runTransaction((transaction) async {
-      final room =
-          (await transaction.get(reference)).data();
+      final room = (await transaction.get(reference)).data();
 
       if (room == null) return;
 
       final occupancy =
-          (room['current_occupancy'] as num)
-              .toInt();
+          (room['current_occupancy'] as num).toInt();
 
       final requests =
-          (room['active_requests'] as num?)
-                  ?.toInt() ??
-              0;
+          (room['active_requests'] as num?)?.toInt() ?? 0;
 
       if (occupancy > 0 || requests > 0) {
         throw StateError(
@@ -754,14 +616,11 @@ class FirestoreService {
     int occupancy,
   ) async {
     throw StateError(
-      'Sĩ số được cập nhật tự động '
-      'khi duyệt hoặc trả phòng.',
+      'Sĩ số được cập nhật tự động khi duyệt hoặc trả phòng.',
     );
   }
 
-  Future<void> createInvoice(
-    Invoice invoice,
-  ) async {
+  Future<void> createInvoice(Invoice invoice) async {
     requireAdmin();
 
     final amounts = [
@@ -773,36 +632,25 @@ class FirestoreService {
     if (amounts.any(
       (value) => !value.isFinite || value < 0,
     )) {
-      throw StateError(
-        'Số tiền không hợp lệ.',
-      );
+      throw StateError('Số tiền không hợp lệ.');
     }
 
     if (invoice.month < 1 ||
         invoice.month > 12 ||
         invoice.year < 1) {
-      throw StateError(
-        'Kỳ hóa đơn không hợp lệ.',
-      );
+      throw StateError('Kỳ hóa đơn không hợp lệ.');
     }
 
-    final reference =
-        collection('invoices').doc(invoice.id);
+    final reference = collection('invoices').doc(invoice.id);
 
     await db.runTransaction((transaction) async {
-      final snapshot =
-          await transaction.get(reference);
+      final snapshot = await transaction.get(reference);
 
       if (snapshot.exists) {
-        throw StateError(
-          'Hóa đơn đã tồn tại.',
-        );
+        throw StateError('Hóa đơn đã tồn tại.');
       }
 
-      transaction.set(
-        reference,
-        invoice.toJson(),
-      );
+      transaction.set(reference, invoice.toJson());
     });
   }
 
@@ -813,63 +661,43 @@ class FirestoreService {
     requireAdmin();
 
     if (!['paid', 'unpaid'].contains(status)) {
-      throw StateError(
-        'Trạng thái hóa đơn không hợp lệ.',
-      );
+      throw StateError('Trạng thái hóa đơn không hợp lệ.');
     }
 
-    await collection('invoices')
-        .doc(invoiceId)
-        .update({
+    await collection('invoices').doc(invoiceId).update({
       'status': status,
     });
   }
 
-  Future<void> deleteInvoice(
-    String invoiceId,
-  ) async {
+  Future<void> deleteInvoice(String invoiceId) async {
     requireAdmin();
 
-    await collection('invoices')
-        .doc(invoiceId)
-        .delete();
+    await collection('invoices').doc(invoiceId).delete();
   }
 
-  Future<void> createTicket(
-    Ticket ticket,
-  ) async {
+  Future<void> createTicket(Ticket ticket) async {
     final auth = AuthController.instance;
 
     if (!auth.isLoggedIn) {
-      throw StateError(
-        'Vui lòng đăng nhập.',
-      );
+      throw StateError('Vui lòng đăng nhập.');
     }
 
     if (!auth.isAdmin &&
-        (auth.currentUser.roomStatus !=
-                RoomStatus.approved ||
-            ticket.roomName !=
-                auth.currentUser.pendingRoomName)) {
+        (auth.currentUser.roomStatus != RoomStatus.approved ||
+            ticket.roomName != auth.currentUser.pendingRoomName)) {
       throw StateError(
-        'Bạn chưa được duyệt cư trú '
-        'tại phòng này.',
+        'Bạn chưa được duyệt cư trú tại phòng này.',
       );
     }
 
     if (ticket.title.trim().isEmpty ||
         ticket.description.trim().isEmpty) {
-      throw StateError(
-        'Vui lòng nhập nội dung báo cáo.',
-      );
+      throw StateError('Vui lòng nhập nội dung báo cáo.');
     }
 
-    await collection('tickets')
-        .doc(ticket.id)
-        .set({
+    await collection('tickets').doc(ticket.id).set({
       ...ticket.toJson(),
-      'owner_username':
-          auth.currentUser.username,
+      'owner_username': auth.currentUser.username,
     });
   }
 
@@ -884,25 +712,17 @@ class FirestoreService {
       'processing',
       'completed',
     ].contains(status)) {
-      throw StateError(
-        'Trạng thái sự cố không hợp lệ.',
-      );
+      throw StateError('Trạng thái sự cố không hợp lệ.');
     }
 
-    await collection('tickets')
-        .doc(ticketId)
-        .update({
+    await collection('tickets').doc(ticketId).update({
       'status': status,
     });
   }
 
-  Future<void> deleteTicket(
-    String ticketId,
-  ) async {
+  Future<void> deleteTicket(String ticketId) async {
     requireAdmin();
 
-    await collection('tickets')
-        .doc(ticketId)
-        .delete();
+    await collection('tickets').doc(ticketId).delete();
   }
 }

@@ -4,6 +4,9 @@ import 'home_screen.dart';
 import 'room_screen.dart';
 import 'user_screen.dart';
 import 'invoice_screen.dart';
+import 'attendance_screen.dart';
+import 'managed_building_screen.dart';
+import '../controllers/auth_controller.dart';
 
 class MainNavigator extends StatefulWidget {
   const MainNavigator({super.key});
@@ -21,33 +24,59 @@ class MainNavigator extends StatefulWidget {
 class _MainNavigatorState extends State<MainNavigator> {
   int _index = 0;
 
-  final List<Widget> _pages = const [
-    HomeScreen(),
-    RoomScreen(),
-    UserScreen(),
-    InvoiceScreen(),
-  ];
+  bool get _manager => AuthController.instance.isBuildingManager;
 
-  static const _labels = [
-    'Trang chủ',
-    'Phòng KTX',
-    'Sinh viên',
-    'Hóa đơn',
-  ];
+  List<Widget> get _pages => _manager
+      ? const [
+          ManagedBuildingScreen(),
+          AttendanceScreen(),
+        ]
+      : const [
+          HomeScreen(),
+          RoomScreen(),
+          UserScreen(),
+          InvoiceScreen(),
+          AttendanceScreen(),
+        ];
 
-  static const _icons = [
-    Icons.home_outlined,
-    Icons.meeting_room_outlined,
-    Icons.people_outline_rounded,
-    Icons.receipt_long_outlined,
-  ];
+  List<String> get _labels => _manager
+      ? const [
+          'Tòa phụ trách',
+          'Điểm danh',
+        ]
+      : const [
+          'Trang chủ',
+          'Phòng KTX',
+          'Sinh viên',
+          'Hóa đơn',
+          'Điểm danh',
+        ];
 
-  static const _activeIcons = [
-    Icons.home_rounded,
-    Icons.meeting_room_rounded,
-    Icons.people_rounded,
-    Icons.receipt_long_rounded,
-  ];
+  List<IconData> get _icons => _manager
+      ? const [
+          Icons.apartment_outlined,
+          Icons.fact_check_outlined,
+        ]
+      : const [
+          Icons.home_outlined,
+          Icons.meeting_room_outlined,
+          Icons.people_outline_rounded,
+          Icons.receipt_long_outlined,
+          Icons.fact_check_outlined,
+        ];
+
+  List<IconData> get _activeIcons => _manager
+      ? const [
+          Icons.apartment,
+          Icons.fact_check,
+        ]
+      : const [
+          Icons.home_rounded,
+          Icons.meeting_room_rounded,
+          Icons.people_rounded,
+          Icons.receipt_long_rounded,
+          Icons.fact_check,
+        ];
 
   void setTab(int value) {
     if (value < 0 || value >= _pages.length) return;
@@ -57,12 +86,7 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   @override
   Widget build(BuildContext context) {
-    final dark =
-        Theme.of(context).brightness == Brightness.dark;
-
-    final activeColor = dark
-        ? const Color(0xFF93C5FD)
-        : const Color(0xFF1E3A8A);
+    final activeColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       body: _pages[_index],
@@ -108,12 +132,9 @@ class _MainNavigatorState extends State<MainNavigator> {
                               ),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? activeColor.withValues(
-                                        alpha: 0.10,
-                                      )
+                                    ? activeColor.withValues(alpha: 0.10)
                                     : Colors.transparent,
-                                borderRadius:
-                                    BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(16),
                               ),
                               child: Icon(
                                 selected

@@ -1,0 +1,71 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "v2_users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "room_status", "order": "ASCENDING" },
+        { "fieldPath": "pending_room_doc", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "room_status", "order": "ASCENDING" },
+        { "fieldPath": "pending_room_name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "room_status", "order": "ASCENDING" },
+        { "fieldPath": "pending_room_name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "day", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "day", "order": "ASCENDING" },
+        { "fieldPath": "building_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "day", "order": "ASCENDING" },
+        { "fieldPath": "owner_uid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_violations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week_start", "order": "ASCENDING" },
+        { "fieldPath": "building_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "v2_violations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week_start", "order": "ASCENDING" },
+        { "fieldPath": "owner_uid", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

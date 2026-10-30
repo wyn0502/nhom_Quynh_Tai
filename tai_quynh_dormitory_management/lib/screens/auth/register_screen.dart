@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../models/user.dart';
+import '../../widgets/rules_consent_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -27,6 +28,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _classNameController = TextEditingController();
   final _hometownController = TextEditingController();
 
+  UserRole _role = UserRole.student;
+
   bool _isLoading = false;
   bool _showPassword = false;
   bool _showConfirmPassword = false;
@@ -42,7 +45,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _mssvController.dispose();
     _classNameController.dispose();
     _hometownController.dispose();
-
     super.dispose();
   }
 
@@ -65,9 +67,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               size: 20,
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(message),
-            ),
+            Expanded(child: Text(message)),
           ],
         ),
       ),
@@ -79,19 +79,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     FocusScope.of(context).unfocus();
 
-    final username =
-        _usernameController.text.trim().toLowerCase();
-
+    final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
     final email = _emailController.text.trim();
     final fullName = _fullNameController.text.trim();
     final mssv = _mssvController.text.trim();
 
-    if (username.isEmpty || fullName.isEmpty || mssv.isEmpty) {
-      _showMessage(
-        'Vui lòng nhập tên đăng nhập, họ tên và mã số sinh viên.',
-      );
+    if (username.isEmpty ||
+        fullName.isEmpty ||
+        _phoneController.text.trim().isEmpty ||
+        _hometownController.text.trim().isEmpty ||
+        (_role == UserRole.student &&
+            (mssv.isEmpty || _classNameController.text.trim().isEmpty))) {
+      _showMessage('Vui lòng điền đầy đủ thông tin có dấu *.');
       return;
     }
 
@@ -111,8 +112,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (email.isNotEmpty &&
-        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-            .hasMatch(email)) {
+        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
       _showMessage('Địa chỉ email không hợp lệ.');
       return;
     }
@@ -127,9 +127,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    if (!RegExp(r'^\+?[0-9]{9,15}$')
+        .hasMatch(_phoneController.text.trim())) {
+      _showMessage(
+        'Số điện thoại phải gồm 9–15 chữ số, có thể bắt đầu bằng +.',
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      final accepted = await requestRulesConsent(context);
+
+      if (!mounted || !accepted) return;
+
       final result = await AuthController.instance.register(
         username: username,
         password: password,
@@ -139,7 +151,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         phone: _phoneController.text.trim(),
         className: _classNameController.text.trim(),
         hometown: _hometownController.text.trim(),
-        role: UserRole.student,
+        role: _role,
+        acceptedRules: true,
       );
 
       if (!mounted) return;
@@ -149,10 +162,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      _showMessage(
-        result.message,
-        success: true,
-      );
+      _showMessage(result.message, success: true);
 
       Navigator.of(context).popUntil(
         (route) => route.isFirst,
@@ -228,9 +238,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     TextInputType keyboardType = TextInputType.text,
     TextInputAction action = TextInputAction.next,
   }) {
-    final visible = confirmPassword
-        ? _showConfirmPassword
-        : _showPassword;
+    final visible =
+        confirmPassword ? _showConfirmPassword : _showPassword;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,9 +270,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             keyboardType: keyboardType,
             textInputAction: action,
             onSubmitted: action == TextInputAction.done
-                ? (_) {
-                    _handleRegister();
-                  }
+                ? (_) => _handleRegister()
                 : null,
             style: const TextStyle(
               fontSize: 13,
@@ -277,8 +284,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               suffixIcon: password
                   ? IconButton(
-                      tooltip:
-                          visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu',
+                      tooltip: visible
+                          ? 'Ẩn mật khẩu'
+                          : 'Hiện mật khẩu',
                       onPressed: _isLoading
                           ? null
                           : () {
@@ -380,45 +388,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 13,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFCBD5E1),
+                        DropdownButtonFormField<UserRole>(
+                          initialValue: _role,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                              value: UserRole.student,
+                              child: Text('Sinh viên'),
+                            ),
+                            DropdownMenuItem(
+                              value: UserRole.buildingManager,
+                              child: Text('Quản lý tòa / bảo vệ'),
+                            ),
+                          ],
+                          onChanged: _isLoading
+                              ? null
+                              : (role) {
+                                  if (role != null) {
+                                    setState(() => _role = role);
+                                  }
+                                },
+                        ),
+                        if (_role == UserRole.buildingManager)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Admin sẽ duyệt tài khoản và phân công tòa. '
+                              'Mỗi tòa tối đa 2 người quản lý.',
                             ),
                           ),
-                          child: const Row(
-                            children: [
-                              Icon(
-                                Icons.school_outlined,
-                                size: 18,
-                                color: brandNavy,
-                              ),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Sinh viên',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: textPrimary,
-                                  ),
-                                ),
-                              ),
-                              Icon(
-                                Icons.lock_outline,
-                                size: 16,
-                                color: textSecondary,
-                              ),
-                            ],
-                          ),
-                        ),
                         const SizedBox(height: 12),
                         _buildInputField(
                           label: 'Tên đăng nhập *',
@@ -470,29 +468,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 10),
                         _buildInputField(
-                          label: 'Số điện thoại',
+                          label: 'Số điện thoại *',
                           hint: 'Số điện thoại di động',
                           controller: _phoneController,
                           icon: Icons.phone_outlined,
                           keyboardType: TextInputType.phone,
                         ),
                         const SizedBox(height: 10),
-                        _buildInputField(
-                          label: 'Mã số sinh viên (MSSV) *',
-                          hint: 'Nhập mã số sinh viên',
-                          controller: _mssvController,
-                          icon: Icons.numbers_outlined,
-                        ),
+                        if (_role == UserRole.student)
+                          _buildInputField(
+                            label: 'Mã số sinh viên (MSSV) *',
+                            hint: 'Nhập mã số sinh viên',
+                            controller: _mssvController,
+                            icon: Icons.numbers_outlined,
+                          ),
+                        const SizedBox(height: 10),
+                        if (_role == UserRole.student)
+                          _buildInputField(
+                            label: 'Lớp quản lý *',
+                            hint: 'Nhập lớp của bạn',
+                            controller: _classNameController,
+                            icon: Icons.school_outlined,
+                          ),
                         const SizedBox(height: 10),
                         _buildInputField(
-                          label: 'Lớp quản lý',
-                          hint: 'Nhập lớp của bạn',
-                          controller: _classNameController,
-                          icon: Icons.school_outlined,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildInputField(
-                          label: 'Quê quán',
+                          label: _role == UserRole.buildingManager
+                              ? 'Nơi sinh sống *'
+                              : 'Quê quán *',
                           hint: 'Tỉnh/Thành phố',
                           controller: _hometownController,
                           icon: Icons.location_on_outlined,

@@ -49,9 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
               size: 20,
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(message),
-            ),
+            Expanded(child: Text(message)),
           ],
         ),
       ),
@@ -87,8 +85,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _showMessage(result.message);
       }
 
-      // Khi đăng nhập thành công, DormitoryApp sẽ tự đổi
-      // sang MainNavigator qua AuthController.
+      // DormitoryApp tự chuyển sang MainNavigator
+      // khi AuthController thông báo đăng nhập thành công.
     } catch (_) {
       _showMessage(
         'Không thể đăng nhập. Vui lòng kiểm tra kết nối.',
@@ -106,17 +104,22 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(
-            forgotPassword ? 'Quên mật khẩu' : 'Trợ giúp đăng nhập',
+            forgotPassword
+                ? 'Quên mật khẩu'
+                : 'Trợ giúp đăng nhập',
           ),
           content: Text(
             forgotPassword
                 ? 'Vui lòng liên hệ ban quản lý ký túc xá để được '
                     'hỗ trợ đặt lại mật khẩu.\n\n'
                     'Ứng dụng hiện dùng tên đăng nhập cho tài khoản. '
-                    'Chức năng tự đặt lại mật khẩu qua email chưa được triển khai.'
-                : 'Sinh viên chọn “Đăng ký tại đây” để tạo tài khoản.\n\n'
+                    'Chức năng tự đặt lại mật khẩu qua email '
+                    'chưa được triển khai.'
+                : 'Sinh viên hoặc quản lý tòa chọn “Đăng ký tại đây”, '
+                    'chọn vai trò và đồng ý nội quy để tạo tài khoản.\n\n'
                     'Sau khi đăng ký, đăng nhập bằng tên đăng nhập '
-                    'và mật khẩu đã tạo.\n\n'
+                    'và mật khẩu đã tạo. Quản lý tòa cần chờ admin '
+                    'duyệt và phân công tòa trước khi sử dụng.\n\n'
                     'Tài khoản quản trị viên được ban quản lý cấu hình '
                     'riêng, không đăng ký từ ứng dụng.',
           ),
@@ -218,12 +221,12 @@ class _LoginScreenState extends State<LoginScreen> {
             textInputAction:
                 password ? TextInputAction.done : TextInputAction.next,
             autofillHints: [
-              password ? AutofillHints.password : AutofillHints.username,
+              password
+                  ? AutofillHints.password
+                  : AutofillHints.username,
             ],
             onSubmitted: password
-                ? (_) {
-                    _handleLogin();
-                  }
+                ? (_) => _handleLogin()
                 : null,
             style: const TextStyle(
               fontSize: 14,
@@ -244,7 +247,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? null
                           : () {
                               setState(() {
-                                _obscurePassword = !_obscurePassword;
+                                _obscurePassword =
+                                    !_obscurePassword;
                               });
                             },
                       icon: Icon(
@@ -370,8 +374,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               TextButton.icon(
-                                onPressed:
-                                    _isLoading ? null : () => _showHelp(),
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => _showHelp(),
                                 icon: const Icon(
                                   Icons.help_outline_rounded,
                                   size: 14,
@@ -406,7 +411,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   vertical: 12,
                                 ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius:
+                                      BorderRadius.circular(10),
                                 ),
                               ),
                               child: _isLoading
@@ -456,7 +462,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     },
                               child: const Text.rich(
                                 TextSpan(
-                                  text: 'Chưa có tài khoản sinh viên? ',
+                                  text: 'Chưa có tài khoản? ',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: textSecondary,
