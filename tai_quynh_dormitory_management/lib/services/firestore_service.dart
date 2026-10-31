@@ -147,8 +147,8 @@ class FirestoreService {
       });
     }
 
-    // Transaction per room prevents overwriting an approval that commits
-    // while this migration is writing the same roster.
+    // One-time snapshot rebuild. Do not approve/return rooms concurrently:
+    // this intentionally replaces any old, incomplete roster snapshot.
     for (final room in rooms.docs) {
       final ref = collection('room_rosters').doc(room.id);
       final members = rosters[room.id]!;
