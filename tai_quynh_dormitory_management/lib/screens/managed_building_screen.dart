@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/auth_controller.dart';
-import '../services/discipline_service.dart';
+import '../models/room.dart';
+import '../models/attendance.dart';
+import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/room_occupancy.dart';
 
 class ManagedBuildingScreen extends StatefulWidget {
   const ManagedBuildingScreen({super.key});
@@ -12,34 +15,51 @@ class ManagedBuildingScreen extends StatefulWidget {
       _ManagedBuildingScreenState();
 }
 
-class _ManagedBuildingScreenState extends State<ManagedBuildingScreen> {
-  final service = DisciplineService();
+class _ManagedBuildingScreenState
+    extends State<ManagedBuildingScreen> {
+  final service = FirestoreService();
 
-  late Future<List<Map<String, dynamic>>> _residents =
-      service.managedResidents();
+  late final rooms = service.getRoomsStream();
 
   String search = '';
+  DateTime date = AttendanceClock.vietnamNow();
 
-  void _reload() {
-    setState(() => _residents = service.managedResidents());
+  Stream<List<ViolationEntry>> weekly() {
+    final week = AttendanceClock.monday(date);
+
+    return service
+        .collection('violations')
+        .where(
+          'building_id',
+          isEqualTo:
+              AuthController.instance.currentUser.managedBuildingId,
+        )
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .where((doc) => doc.data()['week_start'] == week)
+              .map((doc) => ViolationEntry(doc.id, doc.data()))
+              .toList(),
+        );
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthController.instance.currentUser;
+    final auth = AuthController.instance;
+
+    if (!auth.isBuildingManager) {
+      return const Scaffold(
+        body: Center(child: Text('Không có quyền quản lý tòa.')),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Tòa ${user.managedBuildingId ?? ""}'),
+        title: Text('Tòa ${auth.currentUser.managedBuildingId}'),
         actions: [
           IconButton(
-            tooltip: 'Tải lại danh sách',
-            onPressed: _reload,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
             tooltip: 'Đăng xuất',
-            onPressed: () => AuthController.instance.logout(),
+            onPressed: () => auth.logout(),
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -49,81 +69,197 @@ class _ManagedBuildingScreenState extends State<ManagedBuildingScreen> {
         children: [
           AppUi.card(
             context,
-            title: 'Quản lý tòa: ${user.displayName}',
-            icon: Icons.security,
+            title: auth.currentUser.displayName,
+            icon: Icons.shield_outlined,
+            badge:
+                'Quản lý tòa ${auth.currentUser.managedBuildingId}',
             children: [
-              AppUi.info('Điện thoại', user.phone),
-              AppUi.info('Nơi sinh sống', user.hometown),
               const Text(
-                'Bạn chỉ được xem sinh viên và minh chứng của tòa '
-                'được giao. Điểm danh: 22:00–22:10 mỗi ngày, giờ Việt Nam.',
+                'Xem phòng, thành viên và thống kê vi phạm '
+                'của tòa được giao.',
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+
+                  if (selected != null && mounted) {
+                    setState(() => date = selected);
+                  }
+                },
+                icon: const Icon(Icons.date_range),
+                label: Text(
+                  'Tuần ${AttendanceClock.monday(date)}',
+                ),
               ),
             ],
           ),
           TextField(
-            onChanged: (value) {
-              setState(() => search = value.trim().toLowerCase());
-            },
+            onChanged: (value) =>
+                setState(() => search = value.toLowerCase()),
             decoration: const InputDecoration(
-              labelText: 'Tìm phòng, họ tên hoặc MSSV',
               prefixIcon: Icon(Icons.search),
+              hintText: 'Tìm phòng trong tòa',
             ),
           ),
           const SizedBox(height: 16),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _residents,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Column(
-                  children: [
-                    Text(AppUi.errorText(snapshot.error!)),
-                    TextButton(
-                      onPressed: _reload,
-                      child: const Text('Thử lại'),
-                    ),
-                  ],
-                );
-              }
-
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final grouped = <String, List<Map<String, dynamic>>>{};
-
-              for (final student in snapshot.data!) {
-                final text =
-                    '${student['room_name']} '
-                    '${student['full_name']} '
-                    '${student['mssv']}';
-
-                if (!text.toLowerCase().contains(search)) continue;
-
-                grouped
-                    .putIfAbsent(student['room_name'] as String, () => [])
-                    .add(student);
-              }
+          AppUi.data<List<Room>>(
+            stream: rooms,
+            builder: (all) {
+              final visible = all
+                  .where(
+                    (room) =>
+                        room.label.toLowerCase().contains(search),
+                  )
+                  .toList()
+                ..sort((a, b) => a.label.compareTo(b.label));
 
               return Column(
                 children: [
-                  if (grouped.isEmpty)
-                    const Text('Không có sinh viên phù hợp trong tòa này.'),
-                  for (final entry in grouped.entries)
+                  if (visible.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('Tòa chưa có phòng phù hợp.'),
+                    ),
+                  for (final room in visible)
                     AppUi.card(
                       context,
-                      title: entry.key,
-                      badge: '${entry.value.length} sinh viên',
+                      title: room.label,
                       icon: Icons.meeting_room_outlined,
+                      badge: RoomOccupancy.label(room),
+                      color: RoomOccupancy.color(room),
                       children: [
-                        for (final student in entry.value)
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(student['full_name'] as String),
-                            subtitle: Text(
-                              'MSSV: ${student['mssv']} '
-                              '• ${student['username']}',
-                            ),
+                        RoomOccupancy(room: room),
+                        AppUi.data<List<Map<String, dynamic>>>(
+                          stream: service.getRoomResidentsStream(
+                            room.id!,
                           ),
+                          builder: (members) => ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            title: Text(
+                              'Thành viên (${members.length})',
+                            ),
+                            children: [
+                              if (members.isEmpty)
+                                const ListTile(
+                                  title: Text(
+                                    'Chưa có hồ sơ cư trú '
+                                    'được duyệt trong danh sách.',
+                                  ),
+                                ),
+                              for (final member in members)
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const CircleAvatar(
+                                    child: Icon(
+                                      Icons.person_outline,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    '${member['full_name'] ?? member['username']}',
+                                  ),
+                                  subtitle: Text(
+                                    'MSSV: ${member['mssv'] ?? ''}',
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.chevron_right,
+                                  ),
+                                  onTap: () =>
+                                      showModalBottomSheet<void>(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    showDragHandle: true,
+                                    builder: (_) => SafeArea(
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.all(20),
+                                        child: SizedBox(
+                                          height:
+                                              MediaQuery.sizeOf(
+                                                    context,
+                                                  ).height *
+                                                  .6,
+                                          child: AppUi.data<
+                                              List<ViolationEntry>>(
+                                            stream: weekly(),
+                                            builder: (rows) {
+                                              final entries = rows
+                                                  .where(
+                                                    (v) =>
+                                                        v.username ==
+                                                        member[
+                                                            'username'],
+                                                  )
+                                                  .toList();
+
+                                              final total =
+                                                  entries.fold<int>(
+                                                0,
+                                                (sum, v) =>
+                                                    sum + v.fine,
+                                              );
+
+                                              return ListView(
+                                                children: [
+                                                  Text(
+                                                    '${member['full_name']}',
+                                                    style: Theme.of(
+                                                      context,
+                                                    )
+                                                        .textTheme
+                                                        .titleLarge,
+                                                  ),
+                                                  const SizedBox(
+                                                    height: 12,
+                                                  ),
+                                                  Text(
+                                                    'Tuần từ ${AttendanceClock.monday(date)}',
+                                                  ),
+                                                  const SizedBox(
+                                                    height: 8,
+                                                  ),
+                                                  Text(
+                                                    '${entries.length} lần • ${AppUi.money(total)}',
+                                                  ),
+                                                  if (entries
+                                                      .isEmpty)
+                                                    const Padding(
+                                                      padding:
+                                                          EdgeInsets
+                                                              .symmetric(
+                                                        vertical: 20,
+                                                      ),
+                                                      child: Text(
+                                                        'Không có vi phạm được ghi nhận trong tuần đã chọn.',
+                                                      ),
+                                                    ),
+                                                  for (final entry
+                                                      in entries)
+                                                    ListTile(
+                                                      title: Text(
+                                                        entry.reason,
+                                                      ),
+                                                      subtitle: Text(
+                                                        '${entry.day} • ${AppUi.money(entry.fine)}',
+                                                      ),
+                                                    ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                 ],

@@ -1,35 +1,47 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/auth_controller.dart';
+import '../services/firestore_service.dart';
+import '../widgets/app_ui.dart';
 import 'home_screen.dart';
 import 'room_screen.dart';
 import 'user_screen.dart';
 import 'invoice_screen.dart';
 import 'attendance_screen.dart';
 import 'managed_building_screen.dart';
-import '../controllers/auth_controller.dart';
+import 'staff_activity_screen.dart';
 
 class MainNavigator extends StatefulWidget {
   const MainNavigator({super.key});
 
-  static void switchToTab(BuildContext context, int index) {
-    context
-        .findAncestorStateOfType<_MainNavigatorState>()
-        ?.setTab(index);
-  }
+  static void switchToTab(BuildContext context, int index) =>
+      context.findAncestorStateOfType<_MainNavigatorState>()?.setTab(index);
 
   @override
   State<MainNavigator> createState() => _MainNavigatorState();
 }
 
 class _MainNavigatorState extends State<MainNavigator> {
-  int _index = 0;
+  int index = 0;
+  late Future<void> preparation;
 
-  bool get _manager => AuthController.instance.isBuildingManager;
+  bool get manager => AuthController.instance.isBuildingManager;
 
-  List<Widget> get _pages => _manager
+  @override
+  void initState() {
+    super.initState();
+
+    preparation = AuthController.instance.isAdmin
+        ? FirestoreService().syncRoomRosters()
+        : Future.value();
+  }
+
+  List<Widget> get pages => manager
       ? const [
           ManagedBuildingScreen(),
           AttendanceScreen(),
+          StaffActivityScreen(tickets: true),
+          StaffActivityScreen(),
         ]
       : const [
           HomeScreen(),
@@ -39,135 +51,121 @@ class _MainNavigatorState extends State<MainNavigator> {
           AttendanceScreen(),
         ];
 
-  List<String> get _labels => _manager
-      ? const [
-          'Tòa phụ trách',
-          'Điểm danh',
-        ]
-      : const [
-          'Trang chủ',
-          'Phòng KTX',
-          'Sinh viên',
-          'Hóa đơn',
-          'Điểm danh',
-        ];
+  List<String> get labels => manager
+      ? ['Tòa phụ trách', 'Điểm danh', 'Sự cố', 'Thông báo']
+      : ['Trang chủ', 'Phòng KTX', 'Sinh viên', 'Hóa đơn', 'Điểm danh'];
 
-  List<IconData> get _icons => _manager
-      ? const [
+  List<IconData> get icons => manager
+      ? [
           Icons.apartment_outlined,
           Icons.fact_check_outlined,
+          Icons.handyman_outlined,
+          Icons.campaign_outlined,
         ]
-      : const [
+      : [
           Icons.home_outlined,
           Icons.meeting_room_outlined,
-          Icons.people_outline_rounded,
+          Icons.people_outline,
           Icons.receipt_long_outlined,
           Icons.fact_check_outlined,
         ];
 
-  List<IconData> get _activeIcons => _manager
-      ? const [
-          Icons.apartment,
-          Icons.fact_check,
-        ]
-      : const [
-          Icons.home_rounded,
-          Icons.meeting_room_rounded,
-          Icons.people_rounded,
-          Icons.receipt_long_rounded,
-          Icons.fact_check,
-        ];
-
   void setTab(int value) {
-    if (value < 0 || value >= _pages.length) return;
-
-    setState(() => _index = value);
+    if (value >= 0 && value < pages.length) {
+      setState(() => index = value);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final activeColor = Theme.of(context).colorScheme.primary;
+  Widget build(BuildContext context) => FutureBuilder<void>(
+        future: preparation,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Đang cập nhật danh sách cư trú…'),
+                  ],
+                ),
+              ),
+            );
+          }
 
-    return Scaffold(
-      body: _pages[_index],
-      bottomNavigationBar: Material(
-        color: Theme.of(context).cardColor,
-        elevation: 8,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 6,
-              vertical: 6,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate(_pages.length, (index) {
-                final selected = index == _index;
-
-                final color = selected
-                    ? activeColor
-                    : const Color(0xFF94A3B8);
-
-                return Expanded(
-                  child: Semantics(
-                    button: true,
-                    selected: selected,
-                    label: _labels[index],
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => setTab(index),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 4,
+          if (snapshot.hasError) {
+            return Scaffold(
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(AppUi.errorText(snapshot.error!)),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => setState(
+                          () => preparation =
+                              FirestoreService().syncRoomRosters(),
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? activeColor.withValues(alpha: 0.10)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                selected
-                                    ? _activeIcons[index]
-                                    : _icons[index],
-                                color: color,
-                                size: 23,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              _labels[index],
-                              textAlign: TextAlign.center,
-                              softWrap: true,
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 11,
-                                fontWeight: selected
-                                    ? FontWeight.w800
-                                    : FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: const Text('Thử lại đồng bộ'),
                       ),
-                    ),
+                      TextButton(
+                        onPressed: () => AuthController.instance.logout(),
+                        child: const Text('Đăng xuất'),
+                      ),
+                    ],
                   ),
-                );
-              }),
+                ),
+              ),
+            );
+          }
+
+          return Scaffold(
+            body: pages[index],
+            bottomNavigationBar: MobileBottomBar(
+              index: index,
+              labels: labels,
+              icons: icons,
+              onSelect: setTab,
+            ),
+          );
+        },
+      );
+}
+
+class MobileBottomBar extends StatelessWidget {
+  final int index;
+  final List<String> labels;
+  final List<IconData> icons;
+  final ValueChanged<int> onSelect;
+
+  const MobileBottomBar({
+    super.key,
+    required this.index,
+    required this.labels,
+    required this.icons,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) =>
+      MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: NavigationBar(
+          selectedIndex: index,
+          onDestinationSelected: onSelect,
+          labelBehavior:
+              NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: List.generate(
+            labels.length,
+            (i) => NavigationDestination(
+              icon: Icon(icons[i]),
+              label: labels[i],
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
