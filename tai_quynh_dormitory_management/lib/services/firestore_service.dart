@@ -725,7 +725,7 @@ class FirestoreService {
         final members = _rosterMembers(roster)
           ..removeWhere((entry) => entry['username'] == userReference.id);
         transaction.set(
-          rosterRef,
+          rosterRef!,
           _rosterData(roomReference.id, room, members),
         );
       }
