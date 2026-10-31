@@ -79,6 +79,205 @@ class FirestoreService {
         );
   }
 
+
+  // Public, minimal roster. Never expose the private v2_users documents.
+  Stream<List<Map<String, dynamic>>> getRoomResidentsStream(
+    String roomId,
+  ) {
+    return collection('room_rosters').doc(roomId).snapshots().map(
+      (document) => _rosterMembers(document.data())
+        ..sort((a, b) => a['full_name'].toString()
+            .compareTo(b['full_name'].toString())),
+    );
+  }
+
+  static List<Map<String, dynamic>> _rosterMembers(
+    Map<String, dynamic>? data,
+  ) {
+    final values = data?['members'];
+    if (values is! List) return <Map<String, dynamic>>[];
+    return values
+        .whereType<Map>()
+        .map((value) => Map<String, dynamic>.from(value))
+        .toList();
+  }
+
+  static Map<String, dynamic> _rosterData(
+    String id,
+    Map<String, dynamic> room,
+    List<Map<String, dynamic>> members,
+  ) {
+    return {
+      'room_id': id,
+      'room_name': room['label'],
+      'building_id': room['building_id'],
+      'members': members,
+    };
+  }
+
+  // One-time migration for records approved before Spark support.
+  // Admin invokes this explicitly when residents are not yet indexed.
+  Future<void> syncRoomRosters() async {
+    requireAdmin();
+    final rooms = await collection('rooms').get();
+    final users = await collection('users')
+        .where('role', isEqualTo: 'student')
+        .where('room_status', isEqualTo: 'approved')
+        .get();
+
+    final rosters = <String, List<Map<String, dynamic>>>{
+      for (final room in rooms.docs) room.id: <Map<String, dynamic>>[],
+    };
+    final roomByLabel = {
+      for (final room in rooms.docs)
+        room.data()['label']?.toString() ?? '': room.id,
+    };
+
+    for (final document in users.docs) {
+      final user = document.data();
+      final docId = user['pending_room_doc']?.toString();
+      final fallback = roomByLabel[user['pending_room_name']?.toString()];
+      final id = rosters.containsKey(docId) ? docId : fallback;
+      if (id == null) continue;
+
+      rosters[id]!.add({
+        'username': document.id,
+        'full_name': user['full_name']?.toString() ?? document.id,
+        'mssv': user['mssv']?.toString() ?? '',
+      });
+    }
+
+    // Transaction per room prevents overwriting an approval that commits
+    // while this migration is writing the same roster.
+    for (final room in rooms.docs) {
+      final ref = collection('room_rosters').doc(room.id);
+      final members = rosters[room.id]!;
+      await db.runTransaction((tx) async {
+        // If a roster already exists, normal approvals maintain it.
+        // Do not overwrite it with a potentially stale migration snapshot.
+        final existing = await tx.get(ref);
+        if (existing.exists) return;
+        tx.set(ref, _rosterData(room.id, room.data(), members));
+      });
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> managedResidents() async {
+    final user = AuthController.instance.currentUser;
+    if (!user.canManageBuilding) {
+      throw StateError('Bạn chưa được phân công quản lý tòa.');
+    }
+
+    final rooms = await getRoomsStream().first;
+    final rosters = await Future.wait(rooms.map((room) =>
+        collection('room_rosters').doc(room.id!).get()));
+
+    final result = <Map<String, dynamic>>[];
+    for (var index = 0; index < rooms.length; index++) {
+      final room = rooms[index];
+      for (final member in _rosterMembers(rosters[index].data())) {
+        result.add({
+          ...member,
+          'room_name': roomLabel(room),
+          'building_id': room.buildingId,
+        });
+      }
+    }
+    return result
+      ..sort((a, b) => '${a['room_name']} ${a['full_name']}'
+          .compareTo('${b['room_name']} ${b['full_name']}'));
+  }
+
+  // Runs entirely on Firestore (Spark): all manager privileges are
+  // checked again by firestore.rules. The assignment doc is a shared
+  // transaction contention point enforcing at most two managers.
+  Future<void> reviewBuildingManager(
+    User manager, {
+    required bool approve,
+    String? building,
+  }) async {
+    requireAdmin();
+    if (!manager.isBuildingManager) {
+      throw StateError('Tài khoản không phải quản lý tòa.');
+    }
+    final target = building?.trim();
+    if (approve) {
+      if (target == null || target.isEmpty) {
+        throw StateError('Hãy chọn tòa quản lý.');
+      }
+      final validRoom = await collection('rooms')
+          .where('building_id', isEqualTo: target)
+          .limit(1)
+          .get();
+      if (validRoom.docs.isEmpty) {
+        throw StateError('Tòa chưa có phòng hợp lệ.');
+      }
+    }
+
+    // Include pre-existing approved managers before the assignments
+    // collection was introduced; do not silently grant a third slot.
+    final allManagers = await collection('users')
+        .where('role', isEqualTo: 'buildingManager')
+        .get();
+    final legacy = allManagers.docs
+        .where((doc) => doc.data()['manager_status'] == 'approved')
+        .toList();
+
+    final ref = collection('users').doc(manager.username);
+    await db.runTransaction((tx) async {
+      final current = (await tx.get(ref)).data();
+      if (current == null || current['role'] != 'buildingManager') {
+        throw StateError('Không tìm thấy tài khoản quản lý tòa.');
+      }
+      if (approve && current['manager_status'] == 'approved') {
+        throw StateError('Tài khoản đã được duyệt.');
+      }
+
+      final assigned = approve
+          ? target!
+          : (current['managed_building_id']?.toString() ?? '');
+      final assignment = assigned.isEmpty
+          ? null
+          : collection('manager_assignments')
+              .doc(Uri.encodeComponent(assigned));
+      final document = assignment == null ? null : await tx.get(assignment);
+      final slots = <String>{
+        ...((document?.data()?['usernames'] as List?) ?? [])
+            .map((value) => value.toString()),
+        ...legacy
+            .where((doc) => doc.data()['managed_building_id'] == assigned)
+            .map((doc) => doc.id),
+      };
+
+      if (approve) {
+        if (!slots.contains(manager.username) && slots.length >= 2) {
+          throw StateError('Tòa đã đủ 2 người quản lý.');
+        }
+        slots.add(manager.username);
+      } else {
+        slots.remove(manager.username);
+      }
+
+      if (slots.length > 2) {
+        throw StateError(
+          'Tòa đang có hơn 2 quản lý cũ. Hãy kiểm tra dữ liệu trước.',
+        );
+      }
+      if (assignment != null) {
+        tx.set(assignment, {
+          'building_id': assigned,
+          'usernames': slots.toList()..sort(),
+        });
+      }
+      tx.update(ref, {
+        'manager_status': approve ? 'approved' : 'rejected',
+        'managed_building_id': approve ? target : null,
+        'reviewed_by': 'admin',
+        'reviewed_at': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Stream<List<Invoice>> getInvoicesStream({
     String? roomName,
   }) {
@@ -329,6 +528,17 @@ class FirestoreService {
 
       final oldStatus = user['room_status'];
 
+      final oldRosterRef = oldRoomReference == null
+          ? null : collection('room_rosters').doc(oldRoomReference.id);
+      final newRosterRef = newRoomReference == null
+          ? null : collection('room_rosters').doc(newRoomReference.id);
+
+      final oldRoster = oldRosterRef == null
+          ? null : (await transaction.get(oldRosterRef)).data();
+      final newRoster = newRosterRef == null
+          ? null : oldRosterRef?.path == newRosterRef.path
+              ? oldRoster : (await transaction.get(newRosterRef)).data();
+
       if (status == RoomStatus.approved) {
         if (newRoom == null || newRoomReference == null) {
           throw StateError('Chưa chọn phòng hợp lệ.');
@@ -389,6 +599,34 @@ class FirestoreService {
         transaction.update(newRoomReference!, {
           'current_occupancy': occupancy + 1,
         });
+      }
+
+      // Keep the sanitized room roster in the same transaction as the
+      // user's residence status and the room occupancy.
+      final username = userReference.id;
+      if (oldStatus == 'approved' &&
+          oldRosterRef != null && oldRoom != null) {
+        final members = _rosterMembers(oldRoster)
+          ..removeWhere((entry) => entry['username'] == username);
+        transaction.set(
+          oldRosterRef,
+          _rosterData(oldRoomReference!.id, oldRoom, members),
+        );
+      }
+
+      if (status == RoomStatus.approved &&
+          newRosterRef != null && newRoom != null) {
+        final members = _rosterMembers(newRoster)
+          ..removeWhere((entry) => entry['username'] == username);
+        members.add({
+          'username': username,
+          'full_name': user['full_name']?.toString() ?? username,
+          'mssv': user['mssv']?.toString() ?? '',
+        });
+        transaction.set(
+          newRosterRef,
+          _rosterData(newRoomReference!.id, newRoom, members),
+        );
       }
 
       transaction.update(userReference, {
@@ -481,6 +719,18 @@ class FirestoreService {
             'current_occupancy': occupancy - 1,
           });
         }
+      }
+
+      if (user['room_status'] == 'approved' &&
+          roomReference != null && room != null) {
+        final rosterRef = collection('room_rosters').doc(roomReference.id);
+        final roster = (await transaction.get(rosterRef)).data();
+        final members = _rosterMembers(roster)
+          ..removeWhere((entry) => entry['username'] == userReference.id);
+        transaction.set(
+          rosterRef,
+          _rosterData(roomReference.id, room, members),
+        );
       }
 
       transaction.delete(userReference);
@@ -580,6 +830,14 @@ class FirestoreService {
         );
       }
 
+      // Keep the room metadata in any existing sanitized roster.
+      final rosterRef = collection('room_rosters').doc(documentId);
+      final roster = (await transaction.get(rosterRef)).data();
+      if (roster != null) {
+        transaction.set(rosterRef, _rosterData(documentId, {
+          ...old, ..._roomData(room),
+        }, _rosterMembers(roster)));
+      }
       transaction.update(reference, _roomData(room));
     });
   }
@@ -607,6 +865,7 @@ class FirestoreService {
         );
       }
 
+      transaction.delete(collection('room_rosters').doc(documentId));
       transaction.delete(reference);
     });
   }
