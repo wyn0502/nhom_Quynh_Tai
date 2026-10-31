@@ -29,6 +29,21 @@ class _RoomScreenState extends State<RoomScreen> {
     return RoomEditor.show(context, room: room);
   }
 
+
+  Future<void> _syncResidents() async {
+    final confirmed = await AppUi.confirm(
+      context,
+      'Đồng bộ danh sách cư trú từ hồ sơ sinh viên đã duyệt? '
+      'Chỉ thực hiện khi không có admin khác đang duyệt hoặc trả phòng.',
+    );
+    if (!confirmed || !mounted) return;
+    await AppUi.run(
+      context,
+      () => service.syncRoomRosters(),
+      success: 'Đã đồng bộ danh sách sinh viên trong phòng.',
+    );
+  }
+
   Future<void> _deleteRoom(Room room) async {
     final confirmed = await AppUi.confirm(
       context,
@@ -170,6 +185,12 @@ class _RoomScreenState extends State<RoomScreen> {
               style: TextStyle(fontSize: 18),
             ),
             actions: [
+              if (auth.isAdmin)
+                IconButton(
+                  tooltip: 'Đồng bộ danh sách cư trú cũ',
+                  onPressed: _syncResidents,
+                  icon: const Icon(Icons.sync_outlined),
+                ),
               if (auth.isAdmin)
                 TextButton.icon(
                   onPressed: () => _editRoom(),

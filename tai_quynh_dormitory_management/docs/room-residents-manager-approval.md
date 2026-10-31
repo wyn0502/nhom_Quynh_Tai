@@ -1,36 +1,59 @@
-# Danh sách cư trú và duyệt quản lý tòa
+# Bản Spark: xem cư trú và duyệt quản lý tòa
 
-## Sửa lỗi
+Hai chức năng **danh sách sinh viên trong phòng** và **duyệt quản lý tòa**
+đã được chuyển sang Firestore trực tiếp, không cần Cloud Functions / Blaze.
 
-- `functions/discipline.js` phải tồn tại vì `functions/index.js` và `functions/service.js` đều `require('./discipline')`. File trước đây bị đặt nhầm thành `iscipline.js`.
-- Cloud Function `getRoomResidents` trả về `full_name` và `mssv` của sinh viên đã được duyệt. Không đọc trực tiếp toàn bộ tài liệu `v2_users` ở ứng dụng, tránh tiết lộ điện thoại, CCCD và các thông tin khác. Sinh viên đã đăng nhập được xem danh sách người ở phòng; quản lý tòa chỉ được xem phòng thuộc tòa được phân công.
-- Màn hình **Phòng KTX** có mục **Sinh viên trong phòng** (nhấn để tải danh sách). Sinh viên chưa được duyệt không được tính.
-- `reviewBuildingManager` ghi `v2_manager_assignments/{buildingId}` thông qua giao dịch khi admin duyệt lần đầu, giữ tối đa 2 quản lý mỗi tòa. Firestore **không có bảng giống SQL**: collection `v2_manager_assignments` xuất hiện sau lần ghi thành công đầu tiên, không cần tạo bảng trống trước.
+## Mô hình dữ liệu
 
-## Triển khai lên dự án Firebase đang chạy
+- `v2_users/{username}`: hồ sơ riêng tư (role, room_status, pending_room_doc...).
+- `v2_rooms/{roomId}`: phòng và sĩ số.
+- `v2_room_rosters/{roomId}`: danh sách công khai tối thiểu, chỉ gồm
+  `room_id`, `room_name`, `building_id`, `members` (username, full_name, mssv).
+  Ứng dụng không tải hồ sơ sinh viên đầy đủ để hiển thị thẻ phòng.
+- `v2_manager_assignments/{encodedBuildingId}`: phân công `usernames`
+  tối đa hai người cho mỗi tòa, tạo tự động trong transaction khi admin duyệt.
 
-Thay đổi trên GitHub **không tự động triển khai** lên Cloud Functions hoặc Cloud Firestore. Sau khi merge:
+## Triển khai và kiểm thử Flutter Web trong Codespaces
+
+Trong thư mục `tai_quynh_dormitory_management`, dùng nhánh
+`fix/room-residents-manager-approval` và kiểm tra đang trỏ tới đúng
+project Firebase `ltmobile-89b11`.
 
 ```bash
-cd tai_quynh_dormitory_management
-npm --prefix functions ci
-npm --prefix functions test
-firebase use <firebase-project-id>
-firebase deploy --only functions,firestore:rules,firestore:indexes
+git fetch origin
+git switch fix/room-residents-manager-approval
+git pull --ff-only origin fix/room-residents-manager-approval
+
 flutter pub get
-flutter run
+flutter test
+flutter test --platform chrome
+flutter build web --release
+
+firebase deploy --project ltmobile-89b11 --only firestore
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
 ```
 
-Cần đăng nhập Firebase CLI bằng tài khoản có quyền triển khai và xác minh `firebase use` đang trỏ đúng project. Đảm bảo Cloud Functions chạy ở vùng `asia-southeast1`, đúng với Flutter client.
+Mở mục **Ports** trên Codespaces, bật port 8080 và dùng URL được cung cấp
+để test ứng dụng web (không cần triển khai Firebase Hosting).
 
-## Kiểm tra thủ công
+## Kiểm thử chức năng
 
-1. Admin mở **Duyệt quản lý tòa**, chọn tòa `A` và lưu. Xác minh `v2_users/{username}` có `manager_status: approved`, `managed_building_id: A`, đồng thời `v2_manager_assignments/A` có mảng `usernames`.
-2. Duyệt người thứ hai cho tòa A thì thành công; duyệt người thứ ba phải bị từ chối với lỗi có ý nghĩa. Thu hồi quyền người đầu tiên rồi duyệt người thứ ba phải thành công.
-3. Đăng nhập sinh viên, vào **Phòng KTX** và mở **Sinh viên trong phòng** tại phòng có người ở. Chỉ hiển thị họ tên và MSSV của các sinh viên đã được duyệt. Phòng trống hiển thị thông báo không có sinh viên.
-4. Đăng nhập quản lý tòa được duyệt, kiểm tra **Tòa A** chỉ chứa cư dân tòa A.
-5. Nếu xuất hiện lỗi `internal`, xem Firebase Functions logs của `reviewBuildingManager` hoặc `getRoomResidents` sau khi triển khai. Không thể xác nhận lỗi server đã hết chỉ từ việc sửa repo.
+1. Admin mở tab **Phòng KTX**, nhấn biểu tượng đồng bộ
+   (chỉ **một lần** sau khi chuyển sang bản Spark; không thực hiện trong lúc
+   admin khác đang duyệt hoặc trả phòng). Bản ghi `v2_room_rosters` được tạo.
+2. Sinh viên mở thẻ phòng **a102 - A** và mở danh sách người ở;
+   chỉ thấy họ tên/MSSV của sinh viên đã duyệt, không thấy CCCD/điện thoại.
+3. Admin duyệt thêm hoặc trả phòng; danh sách được cập nhật cùng giao dịch
+   cập nhật sĩ số. Thử cả trường hợp phòng đã đầy.
+4. Admin duyệt quản lý tòa A lần đầu: giao dịch tạo
+   `v2_manager_assignments/A`. Duyệt người thứ hai thành công, người thứ ba
+   bị từ chối. Thu hồi một người rồi duyệt lại.
+5. Quản lý tòa A đăng nhập, chỉ thấy danh sách phòng và sinh viên tòa A.
 
-## Dữ liệu cũ
+**Giới hạn gói Spark:** các tính năng điểm danh tự động ban đêm, tải ảnh
+minh chứng bảo mật và xử lý vi phạm vẫn dùng Cloud Functions nên *chưa chạy*
+chỉ với Firestore. Không coi các tính năng này đã được sửa bằng bản Spark.
+Bản Flutter Web cũng cần cấu hình Firebase Authentication Web (allowed domains).
 
-Nếu đã phân quyền quản lý tòa thủ công trong `v2_users` trước khi triển khai, cần đồng bộ các quản lý đó vào `v2_manager_assignments/{buildingId}` trước khi tiếp tục duyệt, tránh vượt giới hạn 2 người. Không tự ý tạo dữ liệu quản lý tòa giả.
+Firestore là NoSQL: collection tự xuất hiện sau khi ghi tài liệu đầu tiên;
+không cần tạo bảng trống trong Firebase Console.

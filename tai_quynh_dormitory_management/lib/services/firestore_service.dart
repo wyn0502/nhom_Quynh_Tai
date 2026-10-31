@@ -152,13 +152,8 @@ class FirestoreService {
     for (final room in rooms.docs) {
       final ref = collection('room_rosters').doc(room.id);
       final members = rosters[room.id]!;
-      await db.runTransaction((tx) async {
-        // If a roster already exists, normal approvals maintain it.
-        // Do not overwrite it with a potentially stale migration snapshot.
-        final existing = await tx.get(ref);
-        if (existing.exists) return;
-        tx.set(ref, _rosterData(room.id, room.data(), members));
-      });
+      // Only run once during migration when no approval is in progress.
+      await ref.set(_rosterData(room.id, room.data(), members));
     }
   }
 
@@ -690,6 +685,10 @@ class FirestoreService {
       final room = roomReference == null
           ? null
           : (await transaction.get(roomReference)).data();
+      final rosterRef = roomReference == null
+          ? null : collection('room_rosters').doc(roomReference.id);
+      final roster = rosterRef == null
+          ? null : (await transaction.get(rosterRef)).data();
 
       if (room != null && roomReference != null) {
         if (user['room_status'] == 'pending') {
@@ -723,8 +722,6 @@ class FirestoreService {
 
       if (user['room_status'] == 'approved' &&
           roomReference != null && room != null) {
-        final rosterRef = collection('room_rosters').doc(roomReference.id);
-        final roster = (await transaction.get(rosterRef)).data();
         final members = _rosterMembers(roster)
           ..removeWhere((entry) => entry['username'] == userReference.id);
         transaction.set(
