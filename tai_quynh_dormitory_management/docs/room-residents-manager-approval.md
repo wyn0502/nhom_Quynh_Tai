@@ -26,7 +26,7 @@ git pull --ff-only origin fix/room-residents-manager-approval
 
 flutter pub get
 flutter test
-flutter test --platform chrome
+flutter test -d chrome
 flutter build web --release
 
 firebase deploy --project ltmobile-89b11 --only firestore
