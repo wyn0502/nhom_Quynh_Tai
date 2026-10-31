@@ -57,12 +57,6 @@ service cloud.firestore {
         (
           signedIn() &&
           resource.data.owner_uid == request.auth.uid
-        ) ||
-        (
-          student() &&
-          resource.data.role == 'student' &&
-          resource.data.room_status == 'approved' &&
-          ownRoom(resource.data.pending_room_name)
         );
 
       allow create: if
