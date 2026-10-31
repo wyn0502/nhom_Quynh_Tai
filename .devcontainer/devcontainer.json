@@ -9,5 +9,10 @@
         "GitHub.copilot"
       ]
     }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
   }
 }
