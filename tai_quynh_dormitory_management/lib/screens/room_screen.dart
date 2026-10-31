@@ -6,6 +6,7 @@ import '../models/user.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/room_occupancy.dart';
+import '../widgets/room_residents.dart';
 
 import 'room_editor.dart';
 
@@ -102,6 +103,8 @@ class _RoomScreenState extends State<RoomScreen> {
         AppUi.info('Giá phòng', AppUi.money(room.fixedPrice)),
         AppUi.info('Chỗ còn trống', room.availableBeds),
         RoomOccupancy(room: room),
+        if (room.id != null)
+          RoomResidentsTile(room: room),
         const SizedBox(height: 14),
         Wrap(
           spacing: 8,

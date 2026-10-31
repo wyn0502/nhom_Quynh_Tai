@@ -77,6 +77,8 @@ exports.reviewBuildingManager = callable('reviewManager');
 
 exports.getManagedResidents = callable('managedResidents');
 
+exports.getRoomResidents = callable('roomResidents');
+
 exports.submitAttendance = callable('submitAttendance');
 
 exports.reviewAttendanceEvidence = callable('reviewEvidence');

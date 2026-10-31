@@ -138,6 +138,18 @@ class DisciplineService {
     });
   }
 
+  Future<List<Map<String, dynamic>>> roomResidents(
+    String roomId,
+  ) async {
+    final result = await call('getRoomResidents', {
+      'roomId': roomId,
+    });
+
+    return (result['residents'] as List)
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+  }
+
   Future<List<Map<String, dynamic>>> managedResidents() async {
     final result = await call('getManagedResidents', {});
 
