@@ -6,6 +6,7 @@ import '../models/user.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/room_occupancy.dart';
+import '../widgets/room_residents.dart';
 
 import 'room_editor.dart';
 
@@ -26,6 +27,21 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _editRoom([Room? room]) {
     return RoomEditor.show(context, room: room);
+  }
+
+
+  Future<void> _syncResidents() async {
+    final confirmed = await AppUi.confirm(
+      context,
+      'Đồng bộ danh sách cư trú từ hồ sơ sinh viên đã duyệt? '
+      'Chỉ thực hiện khi không có admin khác đang duyệt hoặc trả phòng.',
+    );
+    if (!confirmed || !mounted) return;
+    await AppUi.run(
+      context,
+      () => service.syncRoomRosters(),
+      success: 'Đã đồng bộ danh sách sinh viên trong phòng.',
+    );
   }
 
   Future<void> _deleteRoom(Room room) async {
@@ -102,6 +118,8 @@ class _RoomScreenState extends State<RoomScreen> {
         AppUi.info('Giá phòng', AppUi.money(room.fixedPrice)),
         AppUi.info('Chỗ còn trống', room.availableBeds),
         RoomOccupancy(room: room),
+        if (room.id != null)
+          RoomResidentsTile(room: room),
         const SizedBox(height: 14),
         Wrap(
           spacing: 8,
@@ -167,6 +185,12 @@ class _RoomScreenState extends State<RoomScreen> {
               style: TextStyle(fontSize: 18),
             ),
             actions: [
+              if (auth.isAdmin)
+                IconButton(
+                  tooltip: 'Đồng bộ danh sách cư trú cũ',
+                  onPressed: _syncResidents,
+                  icon: const Icon(Icons.sync_outlined),
+                ),
               if (auth.isAdmin)
                 TextButton.icon(
                   onPressed: () => _editRoom(),

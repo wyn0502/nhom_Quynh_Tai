@@ -57,12 +57,6 @@ service cloud.firestore {
         (
           signedIn() &&
           resource.data.owner_uid == request.auth.uid
-        ) ||
-        (
-          student() &&
-          resource.data.role == 'student' &&
-          resource.data.room_status == 'approved' &&
-          ownRoom(resource.data.pending_room_name)
         );
 
       allow create: if
@@ -138,6 +132,31 @@ service cloud.firestore {
               'rules_version',
               'rules_accepted_at'
             ])
+        ) ||
+        (
+          admin() &&
+          resource.data.role == 'buildingManager' &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              'manager_status',
+              'managed_building_id',
+              'reviewed_by',
+              'reviewed_at'
+            ]) &&
+          request.resource.data.manager_status in [
+            'approved', 'rejected'
+          ] &&
+          (
+            (
+              request.resource.data.manager_status == 'approved' &&
+              request.resource.data.managed_building_id is string &&
+              request.resource.data.managed_building_id.size() > 0
+            ) ||
+            (
+              request.resource.data.manager_status == 'rejected' &&
+              request.resource.data.managed_building_id == null
+            )
+          )
         ) ||
         (
           signedIn() &&
@@ -260,9 +279,50 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // A minimal index for listing residents without reading private profiles.
+    match /v2_room_rosters/{roomId} {
+      allow get: if active() &&
+        (
+          admin() ||
+          student() ||
+          (
+            manager() &&
+            get(
+              /databases/$(database)/documents/v2_rooms/$(roomId)
+            ).data.building_id == profile().managed_building_id
+          )
+        );
+      allow list: if false;
+
+      allow create, update: if admin() &&
+        request.resource.data.keys().hasOnly([
+          'room_id', 'room_name', 'building_id', 'members'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'room_id', 'room_name', 'building_id', 'members'
+        ]) &&
+        request.resource.data.room_id == roomId &&
+        request.resource.data.room_name is string &&
+        request.resource.data.building_id is string &&
+        request.resource.data.members is list &&
+        request.resource.data.members.size() <= 100;
+
+      allow delete: if admin();
+    }
+
     match /v2_manager_assignments/{building} {
       allow read: if admin();
-      allow write: if false;
+      allow create, update: if admin() &&
+        request.resource.data.keys().hasOnly([
+          'building_id', 'usernames'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'building_id', 'usernames'
+        ]) &&
+        request.resource.data.building_id is string &&
+        request.resource.data.usernames is list &&
+        request.resource.data.usernames.size() <= 2;
+      allow delete: if admin();
     }
   }
 }

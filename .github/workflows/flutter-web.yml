@@ -1,0 +1,31 @@
+name: Spark Flutter Web checks
+
+on:
+  push:
+    branches: [main, "fix/room-residents-manager-approval"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  flutter-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tai_quynh_dormitory_management
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: beta
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Install packages
+        run: flutter pub get
+      - name: Run Dart/Flutter tests
+        run: flutter test
+      - name: Compile Flutter Web release
+        run: flutter build web --release
+      - name: Run browser tests in Chrome
+        timeout-minutes: 7
+        run: flutter test -d chrome

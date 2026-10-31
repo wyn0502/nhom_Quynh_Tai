@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:image_picker/image_picker.dart';
 
 import '../controllers/auth_controller.dart';
+import 'firestore_service.dart';
 import '../models/attendance.dart';
 import '../models/user.dart';
 
@@ -131,23 +132,21 @@ class DisciplineService {
     required bool approve,
     String? building,
   }) async {
-    await call('reviewBuildingManager', {
-      'username': user.username,
-      'approve': approve,
-      'buildingId': building,
-    });
+    await FirestoreService().reviewBuildingManager(
+      user,
+      approve: approve,
+      building: building,
+    );
   }
 
-  Future<List<Map<String, dynamic>>> managedResidents() async {
-    final result = await call('getManagedResidents', {});
+  Future<List<Map<String, dynamic>>> roomResidents(
+    String roomId,
+  ) async {
+    return FirestoreService().getRoomResidentsStream(roomId).first;
+  }
 
-    return (result['residents'] as List)
-        .map((entry) => Map<String, dynamic>.from(entry as Map))
-        .toList()
-      ..sort(
-        (a, b) => '${a['room_name']} ${a['full_name']}'
-            .compareTo('${b['room_name']} ${b['full_name']}'),
-      );
+  Future<List<Map<String, dynamic>>> managedResidents() {
+    return FirestoreService().managedResidents();
   }
 
   Future<void> submitPhoto(XFile photo) async {

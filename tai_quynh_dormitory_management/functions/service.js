@@ -194,6 +194,75 @@ function createService({
     return { success: true };
   }
 
+
+  // Return only the identity fields needed on room cards. Never send
+  // private v2_users profile fields (phone, CCCD, address) to roommates.
+  async function roomResidents(viewer, { roomId }) {
+    requireThat(
+      typeof roomId === 'string' &&
+        roomId.length > 0 &&
+        roomId.length <= 200 &&
+        !roomId.includes('/'),
+      'Mã phòng không hợp lệ.',
+      'invalid-argument',
+    );
+
+    const room = (
+      await col('rooms').doc(roomId).get()
+    ).data();
+
+    requireThat(room, 'Phòng không tồn tại.', 'not-found');
+
+    const permitted =
+      viewer.role === 'admin' ||
+      viewer.role === 'student' ||
+      (
+        viewer.role === 'buildingManager' &&
+        viewer.manager_status === 'approved' &&
+        viewer.managed_building_id === room.building_id
+      );
+
+    requireThat(
+      permitted,
+      'Bạn không có quyền xem sinh viên phòng này.',
+      'permission-denied',
+    );
+
+    // Older room assignments may only have pending_room_name.
+    // Query both forms and deduplicate, keeping only approved residents.
+    const residentsByDoc = col('users')
+      .where('role', '==', 'student')
+      .where('room_status', '==', 'approved')
+      .where('pending_room_doc', '==', roomId);
+
+    const residentsByLabel = col('users')
+      .where('role', '==', 'student')
+      .where('room_status', '==', 'approved')
+      .where('pending_room_name', '==', room.label);
+
+    const [byDoc, byLabel] = await Promise.all([
+      residentsByDoc.get(),
+      residentsByLabel.get(),
+    ]);
+
+    const users = new Map();
+
+    for (const doc of [...byDoc.docs, ...byLabel.docs]) {
+      const user = doc.data();
+
+      users.set(doc.id, {
+        full_name: user.full_name || doc.id,
+        mssv: user.mssv || '',
+      });
+    }
+
+    return {
+      residents: [...users.values()].sort(
+        (a, b) => a.full_name.localeCompare(b.full_name, 'vi'),
+      ),
+    };
+  }
+
   async function managedResidents(manager) {
     assertManager(
       manager,
@@ -741,6 +810,7 @@ function createService({
     actor,
     reviewManager,
     managedResidents,
+    roomResidents,
     openAttendance,
     submitAttendance,
     closeAttendance,
