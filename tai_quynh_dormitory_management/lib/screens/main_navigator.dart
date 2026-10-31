@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/auth_controller.dart';
+import '../app_theme.dart';
+import 'equipment_screen.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 import 'home_screen.dart';
@@ -30,7 +32,6 @@ class _MainNavigatorState extends State<MainNavigator> {
   @override
   void initState() {
     super.initState();
-
     preparation = AuthController.instance.isAdmin
         ? FirestoreService().syncRoomRosters()
         : Future.value();
@@ -123,14 +124,46 @@ class _MainNavigatorState extends State<MainNavigator> {
             );
           }
 
+          final home = !manager && index == 0;
+
+          final navigation = MobileBottomBar(
+            index: index,
+            labels: labels,
+            icons: icons,
+            onSelect: setTab,
+          );
+
           return Scaffold(
-            body: pages[index],
-            bottomNavigationBar: MobileBottomBar(
-              index: index,
-              labels: labels,
-              icons: icons,
-              onSelect: setTab,
-            ),
+            body: !manager && index == 0
+                ? Theme(
+                    data: AppTheme.build(Theme.of(context).brightness),
+                    child: pages[index],
+                  )
+                : pages[index],
+            floatingActionButton:
+                AuthController.instance.isAdmin && home
+                    ? Theme(
+                        data: AppTheme.build(
+                          Theme.of(context).brightness,
+                        ),
+                        child: FloatingActionButton.extended(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const EquipmentScreen(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          label: const Text('Kho thiết bị'),
+                        ),
+                      )
+                    : null,
+            bottomNavigationBar: home
+                ? Theme(
+                    data: AppTheme.build(Theme.of(context).brightness),
+                    child: navigation,
+                  )
+                : navigation,
           );
         },
       );
@@ -151,14 +184,12 @@ class MobileBottomBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) =>
-      MediaQuery.withClampedTextScaling(
+  Widget build(BuildContext context) => MediaQuery.withClampedTextScaling(
         maxScaleFactor: 1.3,
         child: NavigationBar(
           selectedIndex: index,
           onDestinationSelected: onSelect,
-          labelBehavior:
-              NavigationDestinationLabelBehavior.alwaysShow,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: List.generate(
             labels.length,
             (i) => NavigationDestination(

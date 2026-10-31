@@ -4,11 +4,13 @@ import '../controllers/auth_controller.dart';
 import '../models/room.dart';
 import '../models/user.dart';
 import '../services/firestore_service.dart';
+import '../services/equipment_service.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/room_occupancy.dart';
 import '../widgets/room_residents.dart';
 
 import 'room_editor.dart';
+import 'equipment_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({super.key});
@@ -22,13 +24,11 @@ class _RoomScreenState extends State<RoomScreen> {
 
   String search = '';
   String building = 'all';
-
   bool requesting = false;
 
   Future<void> _editRoom([Room? room]) {
     return RoomEditor.show(context, room: room);
   }
-
 
   Future<void> _syncResidents() async {
     final confirmed = await AppUi.confirm(
@@ -36,7 +36,9 @@ class _RoomScreenState extends State<RoomScreen> {
       'Đồng bộ danh sách cư trú từ hồ sơ sinh viên đã duyệt? '
       'Chỉ thực hiện khi không có admin khác đang duyệt hoặc trả phòng.',
     );
+
     if (!confirmed || !mounted) return;
+
     await AppUi.run(
       context,
       () => service.syncRoomRosters(),
@@ -54,7 +56,10 @@ class _RoomScreenState extends State<RoomScreen> {
 
     await AppUi.run(
       context,
-      () => service.deleteRoom(room.id!),
+      () => EquipmentService().guardRoomDeletion(
+        room,
+        () => service.deleteRoom(room.id!),
+      ),
       success: 'Đã xóa phòng.',
     );
   }
@@ -100,11 +105,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  Widget _roomCard(
-    Room room,
-    User user,
-    bool admin,
-  ) {
+  Widget _roomCard(Room room, User user, bool admin) {
     final locked = !user.canRegisterRoom;
 
     return AppUi.card(
@@ -118,14 +119,23 @@ class _RoomScreenState extends State<RoomScreen> {
         AppUi.info('Giá phòng', AppUi.money(room.fixedPrice)),
         AppUi.info('Chỗ còn trống', room.availableBeds),
         RoomOccupancy(room: room),
-        if (room.id != null)
-          RoomResidentsTile(room: room),
+        if (room.id != null) RoomResidentsTile(room: room),
         const SizedBox(height: 14),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             if (admin) ...[
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EquipmentScreen(room: room),
+                  ),
+                ),
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: const Text('Thiết bị & bàn giao'),
+              ),
               OutlinedButton.icon(
                 onPressed: () => _editRoom(room),
                 icon: const Icon(Icons.edit_outlined),
@@ -144,8 +154,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ] else if (locked)
               AppUi.badge(
-                FirestoreService.roomLabel(room) ==
-                        user.pendingRoomName
+                FirestoreService.roomLabel(room) == user.pendingRoomName
                     ? user.roomStatus == RoomStatus.pending
                         ? 'Phòng đang chờ duyệt'
                         : 'Phòng của bạn'
@@ -228,25 +237,19 @@ class _RoomScreenState extends State<RoomScreen> {
               AppUi.data<List<Room>>(
                 stream: service.getRoomsStream(),
                 builder: (rooms) {
-                  final buildings = rooms
-                      .map((room) => room.buildingId)
-                      .toSet()
-                      .toList()
-                    ..sort();
+                  final buildings =
+                      rooms.map((room) => room.buildingId).toSet().toList()
+                        ..sort();
 
                   final visible = rooms.where((room) {
                     final keyword = search.trim().toLowerCase();
 
                     final matchesBuilding =
-                        building == 'all' ||
-                        room.buildingId == building;
+                        building == 'all' || room.buildingId == building;
 
-                    final matchesSearch =
-                        keyword.isEmpty ||
+                    final matchesSearch = keyword.isEmpty ||
                         room.name.toLowerCase().contains(keyword) ||
-                        room.buildingId
-                            .toLowerCase()
-                            .contains(keyword);
+                        room.buildingId.toLowerCase().contains(keyword);
 
                     return matchesBuilding && matchesSearch;
                   }).toList();
@@ -302,11 +305,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       if (visible.isEmpty)
                         const Text('Chưa có phòng phù hợp.'),
                       ...visible.map(
-                        (room) => _roomCard(
-                          room,
-                          user,
-                          auth.isAdmin,
-                        ),
+                        (room) => _roomCard(room, user, auth.isAdmin),
                       ),
                     ],
                   );

@@ -6,6 +6,8 @@ import '../models/attendance.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/room_occupancy.dart';
+import '../utils/dorm_dates.dart';
+import 'equipment_screen.dart';
 
 class ManagedBuildingScreen extends StatefulWidget {
   const ManagedBuildingScreen({super.key});
@@ -15,10 +17,8 @@ class ManagedBuildingScreen extends StatefulWidget {
       _ManagedBuildingScreenState();
 }
 
-class _ManagedBuildingScreenState
-    extends State<ManagedBuildingScreen> {
+class _ManagedBuildingScreenState extends State<ManagedBuildingScreen> {
   final service = FirestoreService();
-
   late final rooms = service.getRoomsStream();
 
   String search = '';
@@ -71,12 +71,10 @@ class _ManagedBuildingScreenState
             context,
             title: auth.currentUser.displayName,
             icon: Icons.shield_outlined,
-            badge:
-                'Quản lý tòa ${auth.currentUser.managedBuildingId}',
+            badge: 'Quản lý tòa ${auth.currentUser.managedBuildingId}',
             children: [
               const Text(
-                'Xem phòng, thành viên và thống kê vi phạm '
-                'của tòa được giao.',
+                'Xem phòng, thành viên và thống kê vi phạm của tòa được giao.',
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -93,9 +91,7 @@ class _ManagedBuildingScreenState
                   }
                 },
                 icon: const Icon(Icons.date_range),
-                label: Text(
-                  'Tuần ${AttendanceClock.monday(date)}',
-                ),
+                label: Text('Tuần ${DormDates.week(date)}'),
               ),
             ],
           ),
@@ -113,8 +109,7 @@ class _ManagedBuildingScreenState
             builder: (all) {
               final visible = all
                   .where(
-                    (room) =>
-                        room.label.toLowerCase().contains(search),
+                    (room) => room.label.toLowerCase().contains(search),
                   )
                   .toList()
                 ..sort((a, b) => a.label.compareTo(b.label));
@@ -135,30 +130,36 @@ class _ManagedBuildingScreenState
                       color: RoomOccupancy.color(room),
                       children: [
                         RoomOccupancy(room: room),
-                        AppUi.data<List<Map<String, dynamic>>>(
-                          stream: service.getRoomResidentsStream(
-                            room.id!,
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  EquipmentScreen(room: room),
+                            ),
                           ),
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          label: const Text('Bàn giao & thiết bị'),
+                        ),
+                        AppUi.data<List<Map<String, dynamic>>>(
+                          stream:
+                              service.getRoomResidentsStream(room.id!),
                           builder: (members) => ExpansionTile(
                             tilePadding: EdgeInsets.zero,
-                            title: Text(
-                              'Thành viên (${members.length})',
-                            ),
+                            title: Text('Thành viên (${members.length})'),
                             children: [
                               if (members.isEmpty)
                                 const ListTile(
                                   title: Text(
-                                    'Chưa có hồ sơ cư trú '
-                                    'được duyệt trong danh sách.',
+                                    'Chưa có hồ sơ cư trú được duyệt trong danh sách.',
                                   ),
                                 ),
                               for (final member in members)
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const CircleAvatar(
-                                    child: Icon(
-                                      Icons.person_outline,
-                                    ),
+                                    child: Icon(Icons.person_outline),
                                   ),
                                   title: Text(
                                     '${member['full_name'] ?? member['username']}',
@@ -166,9 +167,8 @@ class _ManagedBuildingScreenState
                                   subtitle: Text(
                                     'MSSV: ${member['mssv'] ?? ''}',
                                   ),
-                                  trailing: const Icon(
-                                    Icons.chevron_right,
-                                  ),
+                                  trailing:
+                                      const Icon(Icons.chevron_right),
                                   onTap: () =>
                                       showModalBottomSheet<void>(
                                     context: context,
@@ -179,11 +179,10 @@ class _ManagedBuildingScreenState
                                         padding:
                                             const EdgeInsets.all(20),
                                         child: SizedBox(
-                                          height:
-                                              MediaQuery.sizeOf(
-                                                    context,
-                                                  ).height *
-                                                  .6,
+                                          height: MediaQuery.sizeOf(
+                                                context,
+                                              ).height *
+                                              .6,
                                           child: AppUi.data<
                                               List<ViolationEntry>>(
                                             stream: weekly(),
@@ -218,20 +217,19 @@ class _ManagedBuildingScreenState
                                                     height: 12,
                                                   ),
                                                   Text(
-                                                    'Tuần từ ${AttendanceClock.monday(date)}',
+                                                    'Tuần ${DormDates.week(date)}',
                                                   ),
                                                   const SizedBox(
                                                     height: 8,
                                                   ),
                                                   Text(
-                                                    '${entries.length} lần • ${AppUi.money(total)}',
+                                                    '${entries.length} lần'
+                                                    ' • ${AppUi.money(total)}',
                                                   ),
-                                                  if (entries
-                                                      .isEmpty)
+                                                  if (entries.isEmpty)
                                                     const Padding(
-                                                      padding:
-                                                          EdgeInsets
-                                                              .symmetric(
+                                                      padding: EdgeInsets
+                                                          .symmetric(
                                                         vertical: 20,
                                                       ),
                                                       child: Text(
@@ -245,7 +243,8 @@ class _ManagedBuildingScreenState
                                                         entry.reason,
                                                       ),
                                                       subtitle: Text(
-                                                        '${entry.day} • ${AppUi.money(entry.fine)}',
+                                                        '${entry.day}'
+                                                        ' • ${AppUi.money(entry.fine)}',
                                                       ),
                                                     ),
                                                 ],

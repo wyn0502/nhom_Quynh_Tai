@@ -14,6 +14,15 @@ class RoomEditor {
 
     final service = FirestoreService();
 
+    final raw = room?.id == null
+        ? null
+        : (await service.collection('rooms').doc(room!.id).get()).data();
+
+    if (!context.mounted) return;
+
+    final locked =
+        ((raw?['equipment_count'] as num?)?.toInt() ?? 0) > 0;
+
     final saved = await AppUi.form(
       context,
       title: room == null ? 'Thêm phòng KTX' : 'Sửa phòng KTX',
@@ -22,18 +31,21 @@ class RoomEditor {
           'building',
           'Tòa nhà *',
           value: room?.buildingId,
+          enabled: !locked,
         ),
         InputSpec(
           'name',
           'Tên / số phòng *',
           value: room?.name,
+          enabled: !locked,
         ),
         InputSpec(
           'capacity',
           'Số người tối đa (sức chứa) *',
           value: room?.capacity ?? 6,
-          integer: true,
+          number: true,
           min: 1,
+          max: 100,
         ),
         InputSpec(
           'current',
@@ -56,11 +68,17 @@ class RoomEditor {
         ),
       ],
       onSave: (values) async {
+        final capacity = values['capacity'] as num;
+
+        if (capacity != capacity.round()) {
+          throw StateError('Sức chứa phải là số nguyên.');
+        }
+
         final updated = Room(
           id: room?.id,
-          buildingId: values['building'],
-          name: values['name'],
-          capacity: values['capacity'],
+          buildingId: '${values['building']}'.trim(),
+          name: '${values['name']}'.trim(),
+          capacity: capacity.toInt(),
           currentOccupancy: room?.currentOccupancy ?? 0,
           roomType: values['type'],
           fixedPrice: (values['price'] as num).toDouble(),
@@ -71,21 +89,30 @@ class RoomEditor {
         final duplicate = rooms.any(
           (item) =>
               item.id != room?.id &&
-              item.name.toLowerCase() ==
-                  updated.name.toLowerCase() &&
+              item.name.toLowerCase() == updated.name.toLowerCase() &&
               item.buildingId.toLowerCase() ==
                   updated.buildingId.toLowerCase(),
         );
 
         if (duplicate) {
-          throw StateError(
-            'Phòng này đã tồn tại trong tòa.',
-          );
+          throw StateError('Phòng này đã tồn tại trong tòa.');
         }
 
         if (room == null) {
           await service.addRoom(updated);
         } else {
+          final current =
+              (await service.collection('rooms').doc(room.id).get())
+                  .data();
+
+          if (((current?['equipment_count'] as num?)?.toInt() ?? 0) > 0 &&
+              current?['label'] != updated.label) {
+            throw StateError(
+              'Phòng còn thiết bị đã bàn giao. '
+              'Không đổi tên hoặc tòa trước khi thu hồi thiết bị.',
+            );
+          }
+
           await service.updateRoom(room.id!, updated);
         }
       },

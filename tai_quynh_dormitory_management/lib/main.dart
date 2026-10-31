@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_theme.dart';
+import 'role_palette.dart';
 import 'controllers/auth_controller.dart';
 import 'controllers/theme_controller.dart';
 import 'firebase_options.dart';
@@ -36,6 +38,18 @@ class DormitoryApp extends StatelessWidget {
         return MaterialApp(
           title: 'DOMITORY - Ký Túc Xá Sinh Viên',
           debugShowCheckedModeBanner: false,
+          locale: const Locale('vi', 'VN'),
+          supportedLocales: const [
+            Locale('vi', 'VN'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          builder: (context, child) =>
+              RolePalette(child: child ?? const SizedBox.shrink()),
           themeMode: ThemeController.instance.themeMode,
           theme: AppTheme.build(Brightness.light),
           darkTheme: AppTheme.build(Brightness.dark),

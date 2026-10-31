@@ -5,6 +5,7 @@ import '../controllers/auth_controller.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
 import 'record_editor.dart';
+import 'equipment_screen.dart';
 
 class ManagementScreen extends StatefulWidget {
   final String initialKind;
@@ -49,9 +50,7 @@ class _ManagementScreenState extends State<ManagementScreen> {
       context,
       () async {
         if (entity == 'users') {
-          await service.deleteUser(
-            (document['id'] as num).toInt(),
-          );
+          await service.deleteUser((document['id'] as num).toInt());
         } else {
           await document.reference.delete();
         }
@@ -91,8 +90,11 @@ class _ManagementScreenState extends State<ManagementScreen> {
 
     final entity = kind;
 
-    Query<Map<String, dynamic>> query =
-        service.collection(entity);
+    if (entity == 'assets') {
+      return const EquipmentScreen();
+    }
+
+    Query<Map<String, dynamic>> query = service.collection(entity);
 
     if (entity == 'users') {
       query = query.where('role', isEqualTo: 'student');
@@ -117,7 +119,7 @@ class _ManagementScreenState extends State<ManagementScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
         children: [
           DropdownButtonFormField<String>(
-            value: entity,
+            initialValue: entity,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Chức năng',
@@ -155,8 +157,7 @@ class _ManagementScreenState extends State<ManagementScreen> {
                 children: snapshot.docs.map((document) {
                   final data = document.data();
 
-                  final title =
-                      data['title'] ??
+                  final title = data['title'] ??
                       data['name'] ??
                       data['full_name'] ??
                       data['room_name'] ??
@@ -168,15 +169,10 @@ class _ManagementScreenState extends State<ManagementScreen> {
                     icon: Icons.edit_note_rounded,
                     children: [
                       ...RecordEditor.labels[entity]!.entries.map(
-                        (entry) {
-                          return AppUi.info(
-                            entry.value,
-                            _display(
-                              entry.key,
-                              data[entry.key],
-                            ),
-                          );
-                        },
+                        (entry) => AppUi.info(
+                          entry.value,
+                          _display(entry.key, data[entry.key]),
+                        ),
                       ),
                       Wrap(
                         spacing: 8,
@@ -195,8 +191,7 @@ class _ManagementScreenState extends State<ManagementScreen> {
                             label: const Text('Sửa'),
                           ),
                           TextButton.icon(
-                            onPressed: () =>
-                                _delete(entity, document),
+                            onPressed: () => _delete(entity, document),
                             icon: const Icon(
                               Icons.delete_outline,
                               color: AppUi.red,
