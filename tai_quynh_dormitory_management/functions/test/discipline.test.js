@@ -113,9 +113,9 @@ function manager(username) {
 test('manager approval creates a missing assignment document and limits to 2', async () => {
   const db = fakeFirestore({
     v2_users: {
-      m1: manager('m1'),
-      m2: manager('m2'),
-      m3: manager('m3'),
+      mgr1: manager('mgr1'),
+      mgr2: manager('mgr2'),
+      mgr3: manager('mgr3'),
     },
     v2_rooms: {
       A_a102: {
@@ -129,35 +129,35 @@ test('manager approval creates a missing assignment document and limits to 2', a
   const admin = { role: 'admin', username: 'admin' };
 
   await api.reviewManager(admin, {
-    username: 'm1', buildingId: 'A', approve: true,
+    username: 'mgr1', buildingId: 'A', approve: true,
   });
   assert.deepEqual(
     db.state.get('v2_manager_assignments').get('A').usernames,
-    ['m1'],
+    ['mgr1'],
   );
-  assert.equal(db.state.get('v2_users').get('m1').manager_status, 'approved');
+  assert.equal(db.state.get('v2_users').get('mgr1').manager_status, 'approved');
 
   await api.reviewManager(admin, {
-    username: 'm2', buildingId: 'A', approve: true,
+    username: 'mgr2', buildingId: 'A', approve: true,
   });
 
   await assert.rejects(
     api.reviewManager(admin, {
-      username: 'm3', buildingId: 'A', approve: true,
+      username: 'mgr3', buildingId: 'A', approve: true,
     }),
     error => error instanceof DomainError &&
       error.message.includes('đủ 2'),
   );
 
   await api.reviewManager(admin, {
-    username: 'm1', approve: false,
+    username: 'mgr1', approve: false,
   });
   await api.reviewManager(admin, {
-    username: 'm3', buildingId: 'A', approve: true,
+    username: 'mgr3', buildingId: 'A', approve: true,
   });
   assert.deepEqual(
     db.state.get('v2_manager_assignments').get('A').usernames,
-    ['m2', 'm3'],
+    ['mgr2', 'mgr3'],
   );
 });
 
