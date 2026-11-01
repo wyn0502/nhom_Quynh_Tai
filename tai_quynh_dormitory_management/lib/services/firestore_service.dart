@@ -1184,6 +1184,7 @@ class FirestoreService {
     await collection('tickets').doc(ticket.id).set({
       ...ticket.toJson(),
       'owner_username': auth.currentUser.username,
+      'building_id': ticket.roomName.split(' - ').last,
     });
   }
 
