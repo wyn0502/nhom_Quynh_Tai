@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import '../controllers/auth_controller.dart';
 import '../app_theme.dart';
 import 'equipment_screen.dart';
-import '../services/firestore_service.dart';
-import '../widgets/app_ui.dart';
 import 'home_screen.dart';
 import 'room_screen.dart';
 import 'user_screen.dart';
@@ -25,17 +23,8 @@ class MainNavigator extends StatefulWidget {
 
 class _MainNavigatorState extends State<MainNavigator> {
   int index = 0;
-  late Future<void> preparation;
 
   bool get manager => AuthController.instance.isBuildingManager;
-
-  @override
-  void initState() {
-    super.initState();
-    preparation = AuthController.instance.isAdmin
-        ? FirestoreService().syncRoomRosters()
-        : Future.value();
-  }
 
   List<Widget> get pages => manager
       ? const [
@@ -78,52 +67,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<void>(
-        future: preparation,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Đang cập nhật danh sách cư trú…'),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Scaffold(
-              body: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(AppUi.errorText(snapshot.error!)),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () => setState(
-                          () => preparation =
-                              FirestoreService().syncRoomRosters(),
-                        ),
-                        child: const Text('Thử lại đồng bộ'),
-                      ),
-                      TextButton(
-                        onPressed: () => AuthController.instance.logout(),
-                        child: const Text('Đăng xuất'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
-
+  Widget build(BuildContext context) {
           final home = !manager && index == 0;
 
           final navigation = MobileBottomBar(
@@ -165,8 +109,6 @@ class _MainNavigatorState extends State<MainNavigator> {
                   )
                 : navigation,
           );
-        },
-      );
 }
 
 class MobileBottomBar extends StatelessWidget {
