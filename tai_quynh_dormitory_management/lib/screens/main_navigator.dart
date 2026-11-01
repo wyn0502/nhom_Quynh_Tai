@@ -109,6 +109,7 @@ class _MainNavigatorState extends State<MainNavigator> {
                   )
                 : navigation,
           );
+  }
 }
 
 class MobileBottomBar extends StatelessWidget {
