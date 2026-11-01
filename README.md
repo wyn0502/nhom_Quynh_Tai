@@ -31,3 +31,70 @@ nội dung bảo vệ bài tập lớn.
 ## Repository
 
 https://github.com/wyn0502/nhom_Quynh_Tai
+]633;E;printf '\\n## Cấu trúc thư mục\\n\\n';b6dde542-5d3d-409a-b7f3-253420ab033a]633;C
+## Cấu trúc thư mục
+
+Cấu trúc rút gọn đến ba cấp.
+
+```text
+nhom_Quynh_Tai/
+|-- .devcontainer/
+    |-- devcontainer.json
+|-- .github/
+    |-- workflows/
+        |-- flutter-web.yml
+|-- README.md
+|-- tai_quynh_dormitory_management/
+    |-- .gitignore
+    |-- .metadata
+    |-- README.md
+    |-- android/
+        |-- .gitignore
+        |-- app/
+        |-- build.gradle
+        |-- gradle.properties
+        |-- gradle/
+        |-- settings.gradle
+    |-- docs/
+        |-- room-residents-manager-approval.md
+    |-- firebase.json
+    |-- firestore.indexes.json
+    |-- firestore.rules
+    |-- functions/
+        |-- .gitignore
+        |-- discipline.js
+        |-- index.js
+        |-- package-lock.json
+        |-- package.json
+        |-- service.js
+        |-- test/
+    |-- ios/
+        |-- .gitignore
+        |-- Flutter/
+        |-- Runner.xcodeproj/
+        |-- Runner.xcworkspace/
+        |-- Runner/
+    |-- lib/
+        |-- app_theme.dart
+        |-- controllers/
+        |-- firebase_options.dart
+        |-- main.dart
+        |-- models/
+        |-- role_palette.dart
+        |-- screens/
+        |-- services/
+        |-- utils/
+        |-- widgets/
+    |-- pubspec.lock
+    |-- pubspec.yaml
+    |-- storage.rules
+    |-- test/
+        |-- models_test.dart
+        |-- registration_and_sync_test.dart
+        |-- widget_test.dart
+    |-- web/
+        |-- favicon.png
+        |-- icons/
+        |-- index.html
+        |-- manifest.json
+```
