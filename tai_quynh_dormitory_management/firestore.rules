@@ -292,7 +292,12 @@ service cloud.firestore {
             ).data.building_id == profile().managed_building_id
           )
         );
-      allow list: if false;
+      // Queries must be limited to the signed-in resident's room or
+      // to a building assigned to an approved manager.
+      allow list: if admin() ||
+        (student() && ownRoom(resource.data.room_name)) ||
+        (manager() &&
+          resource.data.building_id == profile().managed_building_id);
 
       allow create, update: if admin() &&
         request.resource.data.keys().hasOnly([
