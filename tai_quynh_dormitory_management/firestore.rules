@@ -347,6 +347,51 @@ service cloud.firestore {
       allow delete: if admin();
     }
 
+    // Building-specific notices stored separately from general announcements.
+    match /v2_building_notices/{id} {
+      allow read: if admin() || (
+        student() &&
+        resource.data.building_id in [
+          '', profile().pending_room_name.split(' - ')[1]
+        ]
+      ) || (
+        manager() &&
+        resource.data.building_id in [
+          '', profile().managed_building_id
+        ]
+      );
+      allow create: if admin() || (
+        manager() &&
+        request.resource.data.building_id == profile().managed_building_id &&
+        request.resource.data.author_uid == request.auth.uid
+      );
+      allow update: if admin() || (
+        manager() &&
+        resource.data.building_id == profile().managed_building_id &&
+        resource.data.author_uid == request.auth.uid &&
+        request.resource.data.building_id == resource.data.building_id &&
+        request.resource.data.author_uid == resource.data.author_uid
+      );
+      allow delete: if admin() || (
+        manager() &&
+        resource.data.building_id == profile().managed_building_id &&
+        resource.data.author_uid == request.auth.uid
+      );
+    }
+
+    match /v2_inventory/{id} {
+      allow read: if admin() || manager();
+      allow write: if admin();
+    }
+
+    match /v2_equipment_moves/{id} {
+      allow read: if admin() || (
+        manager() &&
+        resource.data.building_id == profile().managed_building_id
+      );
+      allow write: if admin();
+    }
+
     match /v2_manager_assignments/{building} {
       allow read: if admin();
       allow create, update: if admin() &&
