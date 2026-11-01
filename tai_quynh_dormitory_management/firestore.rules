@@ -233,7 +233,23 @@ service cloud.firestore {
 
     match /v2_announcements/{id} {
       allow read: if active();
-      allow write: if admin();
+      allow create: if admin() || (
+        manager() &&
+        request.resource.data.building_id == profile().managed_building_id &&
+        request.resource.data.author_uid == request.auth.uid
+      );
+      allow update: if admin() || (
+        manager() &&
+        resource.data.building_id == profile().managed_building_id &&
+        resource.data.author_uid == request.auth.uid &&
+        request.resource.data.building_id == resource.data.building_id &&
+        request.resource.data.author_uid == resource.data.author_uid
+      );
+      allow delete: if admin() || (
+        manager() &&
+        resource.data.building_id == profile().managed_building_id &&
+        resource.data.author_uid == request.auth.uid
+      );
     }
 
     match /v2_invoices/{id} {
@@ -252,16 +268,32 @@ service cloud.firestore {
 
     match /v2_tickets/{id} {
       allow read: if admin() ||
-        ownRoom(resource.data.room_name);
+        ownRoom(resource.data.room_name) ||
+        (
+          manager() &&
+          resource.data.building_id == profile().managed_building_id
+        );
 
       allow create: if admin() ||
         (
           ownRoom(request.resource.data.room_name) &&
           request.resource.data.owner_username == username() &&
+          request.resource.data.building_id ==
+            profile().pending_room_name.split(' - ')[1] &&
           request.resource.data.status == 'pending'
         );
 
-      allow update, delete: if admin();
+      allow update: if admin() ||
+        (
+          manager() &&
+          resource.data.building_id == profile().managed_building_id &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['status']) &&
+          request.resource.data.status in [
+            'pending', 'processing', 'completed'
+          ]
+        );
+      allow delete: if admin();
     }
 
     match /v2_attendance/{id} {

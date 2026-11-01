@@ -72,6 +72,7 @@ class _StaffActivityScreenState extends State<StaffActivityScreen> {
       AppUi.data<QuerySnapshot<Map<String, dynamic>>>(
         stream: service
             .collection('tickets')
+            .where('building_id', isEqualTo: building)
             .where('room_name', isEqualTo: label)
             .snapshots(),
         builder: (snapshot) => Column(
