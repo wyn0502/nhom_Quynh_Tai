@@ -259,6 +259,13 @@ class FirestoreService {
           ref,
           _rosterData(room.id, current, members),
         );
+
+        // Sĩ số luôn bằng số sinh viên thực tế trong danh sách cư trú.
+        if (current['current_occupancy'] != members.length) {
+          tx.update(room.reference, {
+            'current_occupancy': members.length,
+          });
+        }
       });
     }
 
