@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/auth_controller.dart';
 import '../app_theme.dart';
+import '../models/user.dart';
 import 'equipment_screen.dart';
 import '../services/firestore_service.dart';
 import '../widgets/app_ui.dart';
@@ -29,12 +30,85 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   bool get manager => AuthController.instance.isBuildingManager;
 
+  RoomStatus? _lastRoomStatus;
+  bool _approvalNoticeShown = false;
+
   @override
   void initState() {
     super.initState();
     preparation = AuthController.instance.isAdmin
         ? FirestoreService().syncRoomRosters()
         : Future.value();
+
+    AuthController.instance.addListener(_watchRoomApproval);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _watchRoomApproval(),
+    );
+  }
+
+  @override
+  void dispose() {
+    AuthController.instance.removeListener(_watchRoomApproval);
+    super.dispose();
+  }
+
+  /// Báo cho sinh viên khi admin vừa duyệt phòng.
+  void _watchRoomApproval() {
+    final auth = AuthController.instance;
+
+    if (!auth.isStudent) return;
+
+    final user = auth.currentUser;
+    final previous = _lastRoomStatus;
+    _lastRoomStatus = user.roomStatus;
+
+    if (_approvalNoticeShown || !user.hasActiveRoom) return;
+
+    if (previous != null && previous != RoomStatus.approved) {
+      // Đang mở app thì được duyệt.
+      _showApprovalNotice(user.pendingRoomName!);
+    } else if (previous == null) {
+      // Mới đăng nhập: còn hóa đơn duyệt phòng chưa trả thì nhắc.
+      _checkApprovalInvoice(user);
+    }
+  }
+
+  Future<void> _checkApprovalInvoice(User user) async {
+    try {
+      final invoices = await FirestoreService()
+          .getInvoicesStream(roomName: user.pendingRoomName)
+          .first;
+
+      final waiting = invoices.any(
+        (invoice) =>
+            !invoice.isPaid && invoice.username == user.username,
+      );
+
+      if (waiting) _showApprovalNotice(user.pendingRoomName!);
+    } catch (_) {
+      // Không chặn màn hình chính nếu không tải được hóa đơn.
+    }
+  }
+
+  void _showApprovalNotice(String roomName) {
+    if (!mounted || _approvalNoticeShown) return;
+
+    _approvalNoticeShown = true;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
+        content: Text(
+          'Bạn đã được duyệt vào $roomName. '
+          'Hãy thanh toán tiền ở mục Hóa đơn.',
+        ),
+        action: SnackBarAction(
+          label: 'Xem',
+          onPressed: () => setTab(3),
+        ),
+      ),
+    );
   }
 
   List<Widget> get pages => manager

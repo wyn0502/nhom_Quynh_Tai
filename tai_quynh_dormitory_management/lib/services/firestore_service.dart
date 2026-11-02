@@ -467,6 +467,14 @@ class FirestoreService {
               .map(
                 (doc) => Invoice.fromJson(doc.data(), doc.id),
               )
+              // Sinh viên chỉ thấy hóa đơn chung của phòng
+              // và hóa đơn riêng của chính mình.
+              .where(
+                (invoice) =>
+                    !auth.isStudent ||
+                    invoice.username == null ||
+                    invoice.username == auth.currentUser.username,
+              )
               .toList(),
         );
   }
@@ -738,6 +746,23 @@ class FirestoreService {
               ? oldRoster
               : (await transaction.get(newRosterRef)).data();
 
+      final now = DateTime.now();
+
+      // Hóa đơn tiền phòng tạo tự động khi duyệt
+      // (mỗi sinh viên, mỗi phòng, mỗi tháng một hóa đơn).
+      final approvalInvoiceRef =
+          status == RoomStatus.approved && newRoom != null
+              ? collection('invoices').doc(
+                  Uri.encodeComponent(
+                    'approval_${userReference.id}_'
+                    '${newRoomReference!.id}_${now.year}_${now.month}',
+                  ),
+                )
+              : null;
+
+      final approvalInvoiceExists = approvalInvoiceRef != null &&
+          (await transaction.get(approvalInvoiceRef)).exists;
+
       if (status == RoomStatus.approved) {
         if (newRoom == null || newRoomReference == null) {
           throw StateError('Chưa chọn phòng hợp lệ.');
@@ -832,6 +857,27 @@ class FirestoreService {
           newRosterRef,
           _rosterData(newRoomReference!.id, newRoom, members),
         );
+      }
+
+      if (approvalInvoiceRef != null && !approvalInvoiceExists) {
+        final rent =
+            (newRoom!['fixed_rent'] as num?)?.toDouble() ?? 0;
+
+        transaction.set(approvalInvoiceRef, {
+          'room_name': newRoom['label'],
+          'month': now.month,
+          'year': now.year,
+          'room_fee': rent,
+          'electricity_fee': 0,
+          'water_fee': 0,
+          'total_amount': rent,
+          'status': 'unpaid',
+          'username': username,
+          'student_name':
+              user['full_name']?.toString() ?? username,
+          'kind': 'room_approval',
+          'created_at': FieldValue.serverTimestamp(),
+        });
       }
 
       transaction.update(userReference, {

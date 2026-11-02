@@ -10,6 +10,11 @@ class Invoice {
   final String status;
   final int? orderCode;
 
+  /// Có giá trị khi hóa đơn chỉ dành cho một sinh viên
+  /// (ví dụ: tiền phòng tạo tự động khi admin duyệt phòng).
+  final String? username;
+  final String? studentName;
+
   Invoice({
     required this.id,
     required this.roomName,
@@ -21,6 +26,8 @@ class Invoice {
     required this.totalAmount,
     this.status = 'unpaid',
     this.orderCode,
+    this.username,
+    this.studentName,
   });
 
   bool get isPaid => status == 'paid';
@@ -51,6 +58,8 @@ class Invoice {
               roomFee + electricityFee + waterFee,
       status: json['status']?.toString() ?? 'unpaid',
       orderCode: (json['payos_order_code'] as num?)?.toInt(),
+      username: json['username']?.toString(),
+      studentName: json['student_name']?.toString(),
     );
   }
 
@@ -65,6 +74,8 @@ class Invoice {
       'total_amount': totalAmount,
       'status': status,
       if (orderCode != null) 'payos_order_code': orderCode,
+      if (username != null) 'username': username,
+      if (studentName != null) 'student_name': studentName,
     };
   }
 }

@@ -97,6 +97,11 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           color: invoice.isPaid ? AppUi.green : AppUi.orange,
         ),
         const SizedBox(height: 12),
+        if (invoice.studentName != null)
+          AppUi.info(
+            'Sinh viên',
+            invoice.studentName!,
+          ),
         AppUi.info(
           'Tiền phòng',
           AppUi.money(invoice.roomFee),
